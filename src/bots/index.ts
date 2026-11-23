@@ -14,6 +14,7 @@ import { createDshDeepseek } from './dsh-deepseek.js';
 import { createDeepseekAndThy } from './deepseek-and-thy.js';
 import { createTianshu } from './tianshu.js';
 import { createZiwei } from './ziwei.js';
+import { createPojun } from './pojun.js';
 
 export interface BotEntry {
   id: string;
@@ -94,6 +95,13 @@ export const BOTS: BotEntry[] = [
     style: '可反应安全 · 精确斩首',
     color: '#818cf8',
     create: createZiwei,
+  },
+  {
+    id: 'pojun',
+    name: '破军',
+    style: '多线抢产 · 合兵攻家',
+    color: '#ef4444',
+    create: createPojun,
   },
 ];
 

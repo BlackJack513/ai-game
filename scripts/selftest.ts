@@ -816,7 +816,7 @@ test('bot 崩溃不会中断比赛', () => {
 section('7. 陪练 bot 名册');
 
 test('内置 bot 都能创建且风格互补', () => {
-  eq(BOTS.length, 10, '内置 bot 数量');
+  eq(BOTS.length, 11, '内置 bot 数量');
   for (const entry of BOTS) {
     const bot = botOrThrow(entry.id);
     eq(bot.name, entry.name, `${entry.id} 的名称`);
