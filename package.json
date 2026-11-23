@@ -11,7 +11,8 @@
     "check": "tsc -p tsconfig.json",
     "test": "node scripts/build.mjs --test && node .test-build/scripts/selftest.js",
     "smoke": "node scripts/build.mjs && node scripts/ui-smoke.mjs",
-    "tournament": "node scripts/build.mjs && node scripts/tournament.mjs"
+    "tournament": "node scripts/build.mjs && node scripts/tournament.mjs",
+    "swiss": "node scripts/build.mjs && node scripts/swiss.mjs"
   },
   "devDependencies": {
     "jsdom": "^31.0.1",
