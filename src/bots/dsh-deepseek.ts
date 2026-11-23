@@ -272,9 +272,10 @@ function decideTurn(
   }
   if (foeHomeId >= 0 && distHome[foeHomeId] <= 2) threatHome += troops[foeHomeId] * P.nearHomeFoeWeight;
 
+  const inboundHome = enemyNow[home] + enemyNext[home];
   const homeKeepRaw = Math.ceil(threatHome * P.homeDeter) + P.homeBuffer;
   const homeKeep = Math.min(
-    turn <= 8 && threatHome <= P.earlyThreatFree ? P.earlyHomeKeep : Number.MAX_SAFE_INTEGER,
+    turn <= 8 && inboundHome === 0 && threatHome <= P.earlyThreatFree ? P.earlyHomeKeep : Number.MAX_SAFE_INTEGER,
     Math.max(
       P.homeKeepMin,
       Math.min(P.homeKeepMax, Math.max(0, homeKeepRaw)),
@@ -291,7 +292,7 @@ function decideTurn(
   }
   const keep = new Array<number>(n).fill(P.interiorKeep);
   for (const i of mine) {
-    if (i === home) keep[i] = homeKeep;
+    if (i === home) keep[i] = Math.max(homeKeep, Math.min(P.homeKeepMax, inboundHome + 1));
     else if (adjFoeCnt[i] > 0) {
       keep[i] = Math.min(P.frontierKeepMax, Math.max(P.frontierKeep, Math.ceil(adjFoeMax2[i] * P.frontierDeter) + 1));
     }
