@@ -10,6 +10,7 @@ import { createGlm53 } from './glm53.js';
 import { createZhanluDeepseek } from './zhanlu-deepseek.js';
 import { createDshDeepseek } from './dsh-deepseek.js';
 import { createDeepseekAndThy } from './deepseek-and-thy.js';
+import { createTianshu } from './tianshu.js';
 export const BOTS = [
     {
         id: 'tide',
@@ -66,6 +67,13 @@ export const BOTS = [
         style: '经济冲刺 · 跨回合合击',
         color: '#e879f9',
         create: createDeepseekAndThy,
+    },
+    {
+        id: 'tianshu',
+        name: '天枢',
+        style: '精确推演 · 协同绝杀',
+        color: '#c084fc',
+        create: createTianshu,
     },
 ];
 export function createBot(id) {
