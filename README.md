@@ -201,7 +201,6 @@ export interface Bot {
 
 ```ts
 import type { Bot, Observation, Order } from '../engine/types.js';
-import { NEUTRAL } from '../engine/types.js';
 
 export function createRusher(): Bot {
   return {
@@ -209,42 +208,30 @@ export function createRusher(): Bot {
     style: '无脑扩张',
     decide(view: Observation): Order[] {
       const orders: Order[] = [];
-      const dist = new Map<number, number>();
-      const queue: number[] = [];
-
-      // 从所有己方节点出发做一次多源 BFS，得到跳数
-      for (const node of view.nodes) {
-        if (node.owner === view.you) {
-          dist.set(node.id, 0);
-          queue.push(node.id);
-        }
-      }
-      while (queue.length > 0) {
-        const id = queue.shift()!;
-        for (const next of view.adj[id]) {
-          if (view.nodes[next].owner >= 0 && view.nodes[next].owner !== view.you) continue;
-          if (dist.has(next)) continue;
-          dist.set(next, dist.get(id)! + 1);
-          queue.push(next);
-        }
-      }
-
-      // 目标：2 跳内的中立点
-      const targets = view.nodes
-        .filter((node) => node.owner === NEUTRAL && (dist.get(node.id) ?? Infinity) <= 2)
-        .sort((a, b) => b.production - a.production);
+      const sent = new Map<number, number>(); // 目标节点 → 本回合已经派过去的兵
 
       for (const node of view.nodes) {
-        if (node.owner !== view.you || orders.length >= view.maxOrders) continue;
-        const spare = node.troops! - 1;            // 每个节点留 1 兵
+        if (node.owner !== view.you) continue;
+        if (orders.length >= view.maxOrders) break;
+
+        // 只打「和自己相邻」的中立点，优先产出高的
+        const target = view.adj[node.id]
+          .map((id) => view.nodes[id])
+          .filter((n) => n.owner === -1)
+          .sort((a, b) => b.production - a.production)[0];
+        if (!target) continue;
+
+        const spare = (node.troops ?? 0) - 1; // 每个节点留 1 兵看家
         if (spare <= 0) continue;
-        const target = targets[0];
-        if (!target || dist.get(target.id)! !== 1) continue;
-        const need = (target.troops ?? 4) + 1;      // 中立守军可见，+1 保证赢
+
+        // 中立节点的守军永远可见；凑够守军 +1 就能拿下
+        const already = sent.get(target.id) ?? 0;
+        const need = (target.troops ?? 4) + 1 - already;
+        if (need <= 0) continue;
+
         const troops = Math.min(spare, need);
         orders.push({ from: node.id, to: target.id, troops });
-        target.troops = (target.troops ?? 4) - troops; // 避免重复打同一个点
-        if (target.troops <= 0) targets.shift();
+        sent.set(target.id, already + troops);
       }
       return orders;
     },
