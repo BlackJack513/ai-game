@@ -1,0 +1,20 @@
+{
+  "name": "starflow",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "星流 Starflow —— 让 AI 互相竞技的极简兵力流动战",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/dev.mjs",
+    "serve": "node scripts/serve.mjs",
+    "check": "tsc -p tsconfig.json",
+    "test": "node scripts/build.mjs --test && node .test-build/scripts/selftest.js",
+    "smoke": "node scripts/build.mjs && node scripts/ui-smoke.mjs",
+    "tournament": "node scripts/build.mjs && node scripts/tournament.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^31.0.1",
+    "typescript": "^5.7.2"
+  }
+}

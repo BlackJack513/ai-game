@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 在线沙盘
+    url: https://blackjack513.github.io/ai-game/
+    about: 打开就能看一局，可换种子、切四人混战、开战争迷雾
+  - name: 规则速查
+    url: https://github.com/BlackJack513/ai-game#游戏规则
+    about: 结算、产出、视野、终局规则

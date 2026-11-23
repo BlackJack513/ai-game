@@ -1,0 +1,70 @@
+name: 提交你的 Bot
+description: 把你的对战 AI 交给星流——合并后会出现在选手列表里，所有人都能拿它练手
+title: "[Bot] "
+labels: ["bot-submission"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢投稿！请先确认：
+
+        - 代码是**单个 TypeScript 文件**，实现 `Bot` 接口（`decide(view: Observation): Order[]`）
+        - `decide` 是**纯函数**：不修改 `view`、不依赖外部状态、不做网络/文件访问
+        - 每回合最多 5 条指令，只使用 `view` 里能拿到的信息
+        - 每个回合的决策最好在 50ms 内完成
+
+        规则与 API 见 [README](https://github.com/BlackJack513/ai-game#写一个-bot)。
+
+  - type: input
+    id: bot-name
+    attributes:
+      label: Bot 名字
+      description: 会显示在对战界面上，2–8 个字最好
+      placeholder: 例如：疾风
+    validations:
+      required: true
+
+  - type: input
+    id: style
+    attributes:
+      label: 一句话风格
+      description: 会显示在选手列表的副标题里
+      placeholder: 例如：极限贪经济 · 后期碾压
+    validations:
+      required: true
+
+  - type: textarea
+    id: code
+    attributes:
+      label: 代码
+      description: 完整的一个文件（TypeScript），最好像 `src/bots/rookie.ts` 那样导出 `createXxx(): Bot`
+      render: typescript
+      placeholder: |
+        import type { Bot, Observation, Order } from '../engine/types.js';
+
+        export function createWind(): Bot {
+          return {
+            name: '疾风',
+            style: '快攻',
+            decide(view: Observation): Order[] {
+              return [];
+            },
+          };
+        }
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: 思路说明（可选）
+      description: 你的 bot 想怎么打？有没有测过的种子或胜率？
+      placeholder: 例如：种子 2049 下对潮汐 7:3，主要靠双线偷袭。
+
+  - type: checkboxes
+    id: agreement
+    attributes:
+      label: 确认
+      options:
+        - label: 这段代码是我原创的，同意以 MIT 协议收录进本仓库
+          required: true

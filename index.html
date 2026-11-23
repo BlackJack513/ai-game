@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="description" content="星流 Starflow —— 给 AI 写程序互相博弈的同时回合制兵力流动战，浏览器内观战沙盘。" />
+    <meta name="theme-color" content="#070b14" />
+    <title>星流 Starflow · AI 对战沙盘</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark">✦</span>
+          <span class="brand-name">星流</span>
+          <span class="brand-latin">STARFLOW</span>
+        </div>
+        <p class="tagline">同时回合制 · 兵力流动 · AI 观战沙盘</p>
+        <div class="topbar-actions">
+          <a class="btn ghost small" href="https://github.com/BlackJack513/ai-game" target="_blank" rel="noreferrer">GitHub</a>
+          <button class="btn ghost small" id="btn-rules">规则速查</button>
+        </div>
+      </header>
+
+      <main class="layout">
+        <aside class="panel setup">
+          <h2 class="panel-title">对局设置</h2>
+
+          <div class="field">
+            <label class="field-label">模式</label>
+            <div class="seg" id="mode-seg">
+              <button type="button" data-mode="duel" class="on">单挑 1v1</button>
+              <button type="button" data-mode="ffa">四人混战</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="field-label" for="seed">地图种子</label>
+            <div class="seed-row">
+              <input id="seed" type="text" inputmode="numeric" spellcheck="false" autocomplete="off" />
+              <button type="button" class="btn icon-btn" id="btn-dice" title="随机种子">🎲</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="field-label">参赛 AI</label>
+            <div class="slots" id="slots"></div>
+          </div>
+
+          <div class="field">
+            <label class="check" for="fog">
+              <input type="checkbox" id="fog" />
+              <span class="check-box"></span>
+              <span>战争迷雾 <em>以玩家 1 的视角观战</em></span>
+            </label>
+          </div>
+
+          <button class="btn primary start" id="btn-start">开始对战</button>
+          <p class="hint">同一份「种子 + AI 阵容 + 指令」永远得到同一局比赛。</p>
+
+          <div class="rules-card">
+            <h3>四条规则，看懂全局</h3>
+            <ol>
+              <li><b>节点产兵</b>：每回合自动生产，同类节点越多产得越快。</li>
+              <li><b>同时下令</b>：双方每回合各下最多 5 条派兵令，互不可见。</li>
+              <li><b>兵力相减</b>：到达节点后最多者胜，剩余 = 我方 − 对方。</li>
+              <li><b>老家被占</b>：立即出局。稳住老家，或者去偷家。</li>
+            </ol>
+          </div>
+        </aside>
+
+        <section class="stage" id="stage">
+          <canvas id="board" aria-label="星流对战沙盘"></canvas>
+          <div class="stage-hud">
+            <div class="chip" id="hud-turn">第 0 / 0 回合</div>
+            <div class="chip ghost" id="hud-mode">单挑</div>
+            <div class="chip ghost" id="hud-seed">种子 —</div>
+          </div>
+          <div class="banner" id="banner" hidden>
+            <div class="banner-title" id="banner-title">对局结束</div>
+            <div class="banner-sub" id="banner-sub"></div>
+            <div class="banner-actions">
+              <button class="btn primary small" id="btn-again">再来一局</button>
+              <button class="btn ghost small" id="btn-replay">从头观看</button>
+            </div>
+          </div>
+          <div class="tooltip" id="tooltip" hidden></div>
+          <div class="stage-empty" id="stage-empty">
+            <div class="empty-mark">✦</div>
+            <p>选择模式与 AI，点击「开始对战」</p>
+            <p class="muted">也可以直接按空格播放默认对局</p>
+          </div>
+        </section>
+
+        <aside class="panel side">
+          <div class="side-head">
+            <h2 class="panel-title">战况</h2>
+            <span class="muted small" id="side-seed"></span>
+          </div>
+          <div class="score" id="score"></div>
+          <div class="side-head log-head">
+            <h2 class="panel-title">战报</h2>
+            <button class="btn ghost small" id="btn-clear-log">清空</button>
+          </div>
+          <div class="log" id="log">
+            <p class="log-empty">开战后，这里会滚动播报每一次攻占与淘汰。</p>
+          </div>
+        </aside>
+      </main>
+
+      <footer class="timeline">
+        <div class="transport">
+          <button class="btn icon-btn" id="btn-first" title="回到开局">⏮</button>
+          <button class="btn icon-btn" id="btn-prev" title="上一回合">◀</button>
+          <button class="btn play-btn" id="btn-play" title="播放 / 暂停（空格）">▶</button>
+          <button class="btn icon-btn" id="btn-next" title="下一回合">▶</button>
+          <button class="btn icon-btn" id="btn-last" title="跳到结尾">⏭</button>
+        </div>
+        <div class="scrub-wrap">
+          <input type="range" id="scrub" min="0" max="0" value="0" step="1" aria-label="回放进度" />
+        </div>
+        <div class="turn-label" id="turn-label">回合 0 / 0</div>
+        <div class="seg speeds" id="speeds">
+          <button type="button" data-speed="0.5">0.5×</button>
+          <button type="button" data-speed="1" class="on">1×</button>
+          <button type="button" data-speed="2">2×</button>
+          <button type="button" data-speed="4">4×</button>
+        </div>
+      </footer>
+    </div>
+
+    <dialog class="rules-dialog" id="rules-dialog">
+      <div class="dialog-head">
+        <h2>星流 · 规则速查</h2>
+        <button class="btn ghost small" id="btn-close-rules">关闭</button>
+      </div>
+      <div class="dialog-body">
+        <h3>一局怎么打赢</h3>
+        <p>占领更多节点 → 产出更多兵力 → 攻破对手老家。也可以趁对手倾巢而出时直接偷家，老家被占立即结束。</p>
+        <h3>每回合发生什么</h3>
+        <ol>
+          <li><b>下令</b>：双方同时提交最多 5 条 <code>(起点, 终点, 兵力)</code>，互相看不见。</li>
+          <li><b>出兵</b>：路径取不经过敌方节点的最短路；相邻节点当回合到达，每多隔一跳晚一回合。</li>
+          <li><b>结算</b>：所有到达兵力与守军在终点比大小，最多者胜，剩余 = 第一名 − 第二名，其余全灭；平局守方胜，中立点平局归零。</li>
+          <li><b>产出</b>：回合结束时每个节点生产兵力（新占节点也算），单点上限 100。</li>
+        </ol>
+        <h3>节点与产出</h3>
+        <ul>
+          <li><b>老家</b> +4 / 回合，初始 20 兵，视野 2 跳。失去即败。</li>
+          <li><b>农场 / 矿场 / 研究院</b> 基础 +2；同类每 2 个额外 +1（同类越多越快）。</li>
+          <li><b>瞭望塔</b> +2，视野 3 跳，是眼睛。</li>
+          <li><b>兵工厂</b> +2 且 +3 固定加成，是拳头；守军也更强。</li>
+        </ul>
+        <h3>视野</h3>
+        <p>节点归属公开，兵力隐藏：视野外的敌方节点只显示「?」。己方节点 1 跳、老家 2 跳、瞭望塔 3 跳；敌方纵队只要路径经过你的视野就会被看见。</p>
+        <h3>终局</h3>
+        <p>150 回合仍未分出胜负时：先比节点数，再比总兵力，仍相同则判和。所以龟缩拖延并不划算。</p>
+        <h3>写一个 bot</h3>
+        <p>实现 <code>Bot</code> 接口的 <code>decide(view: Observation): Order[]</code> 即可，所有信息都来自 <code>view</code>，引擎保证确定性。详见仓库 README。</p>
+      </div>
+    </dialog>
+
+    <script type="module" src="./js/main.js"></script>
+  </body>
+</html>

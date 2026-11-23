@@ -1,0 +1,42 @@
+name: 反馈问题
+description: 规则、地图、观战界面或平衡性的问题
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: 问题类型
+      options:
+        - 规则引擎（结算 / 视野 / 产出）
+        - 地图生成
+        - 观战界面（回放 / 渲染 / 交互）
+        - Bot 行为与平衡性
+        - 文档
+        - 其它
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么
+      description: 尽量附上模式、种子、回合数和复现步骤
+      placeholder: |
+        模式：单挑
+        种子：2049
+        回合：37
+        现象：……
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 你期望的结果
+
+  - type: input
+    id: env
+    attributes:
+      label: 环境（可选）
+      placeholder: 例如：Chrome 141 / Windows 11
