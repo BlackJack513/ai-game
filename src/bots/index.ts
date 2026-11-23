@@ -1,5 +1,5 @@
 /**
- * 内置 bot 清单：三个陪练 + 一个「新兵」示例。
+ * 内置 bot 清单：四个陪练 + 一个「新兵」示例。
  * 前端用 id 选择对手，对局记录里也只存 id。
  */
 
@@ -8,6 +8,7 @@ import { createTide } from './tide.js';
 import { createViper } from './viper.js';
 import { createTurtle } from './turtle.js';
 import { createRookie } from './rookie.js';
+import { createGlm53 } from './glm53.js';
 
 export interface BotEntry {
   id: string;
@@ -46,6 +47,13 @@ export const BOTS: BotEntry[] = [
     style: '最简示例 · 全线压上',
     color: '#34d399',
     create: createRookie,
+  },
+  {
+    id: 'glm53',
+    name: 'GLM53',
+    style: '全局调度 · 攻守兼备',
+    color: '#a78bfa',
+    create: createGlm53,
   },
 ];
 
