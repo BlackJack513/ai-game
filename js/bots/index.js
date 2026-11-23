@@ -11,6 +11,7 @@ import { createZhanluDeepseek } from './zhanlu-deepseek.js';
 import { createDshDeepseek } from './dsh-deepseek.js';
 import { createDeepseekAndThy } from './deepseek-and-thy.js';
 import { createTianshu } from './tianshu.js';
+import { createZiwei } from './ziwei.js';
 export const BOTS = [
     {
         id: 'tide',
@@ -74,6 +75,13 @@ export const BOTS = [
         style: '精确推演 · 协同绝杀',
         color: '#c084fc',
         create: createTianshu,
+    },
+    {
+        id: 'ziwei',
+        name: '紫微',
+        style: '可反应安全 · 精确斩首',
+        color: '#818cf8',
+        create: createZiwei,
     },
 ];
 export function createBot(id) {
