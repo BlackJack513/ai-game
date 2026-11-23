@@ -8,6 +8,7 @@ import { createTurtle } from './turtle.js';
 import { createRookie } from './rookie.js';
 import { createGlm53 } from './glm53.js';
 import { createZhanluDeepseek } from './zhanlu-deepseek.js';
+import { createDshDeepseek } from './dsh-deepseek.js';
 export const BOTS = [
     {
         id: 'tide',
@@ -50,6 +51,13 @@ export const BOTS = [
         style: '精确结算 · 全局调度',
         color: '#f97316',
         create: createZhanluDeepseek,
+    },
+    {
+        id: 'dsh-deepseek',
+        name: 'DSH DeepSeek',
+        style: '贪婪征服 · 精简高效',
+        color: '#22d3ee',
+        create: createDshDeepseek,
     },
 ];
 export function createBot(id) {
