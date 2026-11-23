@@ -9,6 +9,7 @@ import { createViper } from './viper.js';
 import { createTurtle } from './turtle.js';
 import { createRookie } from './rookie.js';
 import { createGlm53 } from './glm53.js';
+import { createZhanluDeepseek } from './zhanlu-deepseek.js';
 
 export interface BotEntry {
   id: string;
@@ -54,6 +55,13 @@ export const BOTS: BotEntry[] = [
     style: '全局调度 · 攻守兼备',
     color: '#a78bfa',
     create: createGlm53,
+  },
+  {
+    id: 'zhanlu-deepseek',
+    name: 'zhanluDeepseek',
+    style: '精确结算 · 全局调度',
+    color: '#f97316',
+    create: createZhanluDeepseek,
   },
 ];
 
