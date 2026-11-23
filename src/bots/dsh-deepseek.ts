@@ -45,6 +45,8 @@ export interface Params {
   cheapBid: number;
 
   hoardTurn: number;
+  reinforceMax: number;
+  reinforceCap: number;
   unseenGrowth: number;
   earlyHomeKeep: number;
 }
@@ -85,6 +87,8 @@ export const PARAMS: Params = {
   cheapBid: 8,
 
   hoardTurn: 125,
+  reinforceMax: 2,
+  reinforceCap: 12,
   unseenGrowth: 3,
   earlyHomeKeep: 3,
 };
@@ -238,9 +242,14 @@ function decideTurn(
 
   const enemyNow = new Array<number>(n).fill(0);
   const enemyNext = new Array<number>(n).fill(0);
+  const myIncoming = new Array<number>(n).fill(0);
   for (const col of view.columns) {
-    if (col.owner === you) continue;
-    const dest = col.path[col.path.length - 1];
+    const dest0 = col.path[col.path.length - 1];
+    if (col.owner === you) {
+      if (col.arriveTurn <= turn + 1) myIncoming[dest0] += col.troops;
+      continue;
+    }
+    const dest = dest0;
     if (col.arriveTurn === turn) enemyNow[dest] += col.troops;
     else if (col.arriveTurn === turn + 1) enemyNext[dest] += col.troops;
   }
@@ -341,6 +350,32 @@ function decideTurn(
       if (avail[home] >= homeKeep) break;
       if (used.has(`${d}>${home}`)) continue;
       send(d, home, Math.min(homeKeep - avail[home], avail[d] - 1), true);
+    }
+  }
+
+  // ---- B2 增援受攻节点 ----
+  {
+    const threatened = mine.filter((i) => i !== home && owner[i] === you && enemyNow[i] + enemyNext[i] > 0);
+    threatened.sort((a, b) => kindBonus(b) - kindBonus(a));
+    let helped = 0;
+    for (const t of threatened) {
+      if (helped >= P.reinforceMax) break;
+      if (!canOrder()) break;
+      const foe = enemyNow[t] + enemyNext[t];
+      const own = avail[t] + myIncoming[t];
+      if (own > foe) continue;
+      const deficit = Math.min(foe - own + 1, P.reinforceCap);
+      const donors = adj[t]
+        .filter((j) => owner[j] === you && j !== t && free(j) > 1)
+        .sort((a, b) => free(b) - free(a));
+      if (donors.reduce((sum, j) => sum + free(j), 0) < deficit) continue;
+      let need = deficit;
+      for (const d of donors) {
+        if (need <= 0) break;
+        const give = send(d, t, Math.min(need, free(d)));
+        if (give > 0) need -= give;
+      }
+      if (need <= 0) helped++;
     }
   }
 
