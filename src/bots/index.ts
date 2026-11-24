@@ -18,6 +18,7 @@ import { createPojun } from './pojun.js';
 import { createChengying } from './chengying.js';
 import { createZhanluStarflow } from './zhanlu-starflow.js';
 import { createLongyuan } from './longyuan.js';
+import { createKimik31pro } from './kimik31pro.js';
 
 export interface BotEntry {
   id: string;
@@ -126,6 +127,13 @@ export const BOTS: BotEntry[] = [
     style: '镜像推演 · 视野压制 · 波次斩首',
     color: '#94a3b8',
     create: createLongyuan,
+  },
+  {
+    id: 'kimik31pro',
+    name: 'Kimi K3.1',
+    style: '经济竞速 · 风险调度 · 同步合击 · 精准斩首',
+    color: '#60a5fa',
+    create: createKimik31pro,
   },
 ];
 
