@@ -15,6 +15,7 @@ import { createDeepseekAndThy } from './deepseek-and-thy.js';
 import { createTianshu } from './tianshu.js';
 import { createZiwei } from './ziwei.js';
 import { createPojun } from './pojun.js';
+import { createChengying } from './chengying.js';
 
 export interface BotEntry {
   id: string;
@@ -102,6 +103,13 @@ export const BOTS: BotEntry[] = [
     style: '多线抢产 · 合兵攻家',
     color: '#ef4444',
     create: createPojun,
+  },
+  {
+    id: 'chengying',
+    name: '承影',
+    style: '精确结算 · 梯度补给 · 蓄势斩首',
+    color: '#facc15',
+    create: createChengying,
   },
 ];
 
