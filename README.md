@@ -6,6 +6,8 @@
 
 **单挑排行榜**：[LEADERBOARD.md](LEADERBOARD.md)
 
+**四人混战排行榜**：[FFA-LEADERBOARD.md](FFA-LEADERBOARD.md)
+
 ---
 
 ## 游戏规则
@@ -156,13 +158,28 @@ npm run challenge -- --games=100      # 调整每个对阵的场数（默认 100
 
 **不可以参考前十名 bot 的代码**（包括 `src/bots/` 源码与 `js/bots/` 编译产物），只能从规则出发独立设计，并靠运行结果获取反馈。
 
+### 四人混战排行榜
+
+[四人混战排行榜](FFA-LEADERBOARD.md) 只取**前五名**，用四人混战而非单挑评价 bot：
+
+- **首次定榜**：全部 bot 枚举全部四人组合（C(15,4) = 1365 桌），每桌 20 局，共 27300 局；
+- **后续打榜**：新 bot 只与当前前五名组成 6 人全组合（C(6,4) = 15 桌 × 20 局 = 300 局），重排后取前五名，第 6 名及以后退出后续打榜；
+- **积分**：按终局名次第 1/2/3/4 名分别 3/2/1/0 分（并列第一各 2.5 分），排名依次看总积分、平均名次、第一率；
+- 每局桌内座位轮换、固定种子，结果可复现。
+
+```bash
+npm run ffa                                    # 全体 bot 全组合，每桌 20 局
+npm run ffa -- --games=100                     # 提高每桌场数
+npm run ffa -- --pool=<id1>,<id2>,<id3>,<id4>  # 指定参赛名单（至少 4 人）
+```
+
 ### AI 参赛纪律（请自觉遵守）
 
 用 AI 编写 bot 时，请把比赛当作「闭卷考试」：
 
 - **可以看**：本 README、`src/engine/`（规则与类型）、`src/bots/index.ts`（注册方式）、`scripts/` 里的构建与评测脚本；
 - **不可以看**：其他 bot 的代码，包括 `src/bots/` 下除自己文件外的任何文件，以及 `js/bots/` 中对应的编译产物；
-- **只能通过运行来获取反馈**：用 `npm test`、`npm run tournament`、`npm run swiss`、`npm run challenge`、`npm run ladder` 等命令跑测试与对战，根据胜率、非法指令和崩溃统计迭代自己的策略；
+- **只能通过运行来获取反馈**：用 `npm test`、`npm run tournament`、`npm run swiss`、`npm run ffa`、`npm run challenge`、`npm run ladder` 等命令跑测试与对战，根据胜率、非法指令和崩溃统计迭代自己的策略；
 - **不要变相偷看**：不复制、改写、拼接他人的实现或策略结构，也不要试图从评测输出反推别人的源码。
 
 这样做的目的是让每个 AI 都从规则出发独立设计策略，保证对局与投稿的公平性。这是对参赛者的自律要求，仓库不做强制检查。
@@ -173,7 +190,7 @@ npm run challenge -- --games=100      # 调整每个对阵的场数（默认 100
 
 1. 打开 [Bot 提交模板](https://github.com/BlackJack513/ai-game/issues/new?template=bot-submission.yml)
 2. 填写名字、一句话风格、完整代码
-3. 维护者跑自测，再与当前前十名做 11 位打榜（每对 1000 场），确认后合并，之后会出现在网页的选手列表里
+3. 维护者跑自测，再与当前前十名做 11 位打榜（每对 1000 场）并与当前混战前五名跑 6 人全组合，确认后合并，之后会出现在网页的选手列表里
 
 代码要求：单个 TypeScript 文件，实现 `Bot` 接口，只依赖 `view`，同意以 MIT 协议收录。
 
