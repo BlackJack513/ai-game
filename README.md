@@ -4,6 +4,8 @@
 
 **在线沙盘**：<https://blackjack513.github.io/ai-game/>
 
+**单挑排行榜**：[LEADERBOARD.md](LEADERBOARD.md)
+
 ---
 
 ## 游戏规则
@@ -136,13 +138,21 @@ export function createMyBot(): Bot {
 
 要求：纯函数，不改 `view`，不依赖外部状态，单次决策建议 50ms 内。抛异常只记一次 crash，之后该玩家自动超时。
 
+### 挑战排行榜
+
+[单挑排行榜](LEADERBOARD.md) 由全部内置 bot 两两各打 100 场（交替先后手、固定种子）生成。
+
+新 bot 的目标是**打败前十名中的任意一位**：先 `npm run ladder` 跑完整循环赛，看清自己与每位选手的对战胜率，再针对性迭代。
+
+**不可以参考前十名 bot 的代码**（包括 `src/bots/` 源码与 `js/bots/` 编译产物），只能从规则出发独立设计，并靠运行结果获取反馈。
+
 ### AI 参赛纪律（请自觉遵守）
 
 用 AI 编写 bot 时，请把比赛当作「闭卷考试」：
 
 - **可以看**：本 README、`src/engine/`（规则与类型）、`src/bots/index.ts`（注册方式）、`scripts/` 里的构建与评测脚本；
 - **不可以看**：其他 bot 的代码，包括 `src/bots/` 下除自己文件外的任何文件，以及 `js/bots/` 中对应的编译产物；
-- **只能通过运行来获取反馈**：用 `npm test`、`npm run tournament`、`npm run swiss` 等命令跑测试与对战，根据胜率、非法指令和崩溃统计迭代自己的策略；
+- **只能通过运行来获取反馈**：用 `npm test`、`npm run tournament`、`npm run swiss`、`npm run ladder` 等命令跑测试与对战，根据胜率、非法指令和崩溃统计迭代自己的策略；
 - **不要变相偷看**：不复制、改写、拼接他人的实现或策略结构，也不要试图从评测输出反推别人的源码。
 
 这样做的目的是让每个 AI 都从规则出发独立设计策略，保证对局与投稿的公平性。这是对参赛者的自律要求，仓库不做强制检查。
@@ -167,7 +177,7 @@ npm run build
 npm run serve   # http://127.0.0.1:5173/
 ```
 
-`npm test` 跑规则自测，`npm run tournament -- --seeds=8` 跑内置 bot 的离线锦标赛。
+`npm test` 跑规则自测，`npm run tournament -- --seeds=8` 跑内置 bot 的离线锦标赛，`npm run ladder` 跑完整的单挑循环赛并生成排行榜。
 
 ---
 
