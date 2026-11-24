@@ -17,6 +17,7 @@ import { createZiwei } from './ziwei.js';
 import { createPojun } from './pojun.js';
 import { createChengying } from './chengying.js';
 import { createZhanluStarflow } from './zhanlu-starflow.js';
+import { createLongyuan } from './longyuan.js';
 
 export interface BotEntry {
   id: string;
@@ -118,6 +119,13 @@ export const BOTS: BotEntry[] = [
     style: '经济滚雪球 · 视野预警 · 精准掠夺 · 蓄势斩首',
     color: '#2dd4bf',
     create: createZhanluStarflow,
+  },
+  {
+    id: 'longyuan',
+    name: '龙渊',
+    style: '镜像推演 · 视野压制 · 波次斩首',
+    color: '#94a3b8',
+    create: createLongyuan,
   },
 ];
 
