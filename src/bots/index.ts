@@ -16,6 +16,7 @@ import { createTianshu } from './tianshu.js';
 import { createZiwei } from './ziwei.js';
 import { createPojun } from './pojun.js';
 import { createChengying } from './chengying.js';
+import { createZhanluStarflow } from './zhanlu-starflow.js';
 
 export interface BotEntry {
   id: string;
@@ -110,6 +111,13 @@ export const BOTS: BotEntry[] = [
     style: '精确结算 · 梯度补给 · 蓄势斩首',
     color: '#facc15',
     create: createChengying,
+  },
+  {
+    id: 'zhanlu-starflow',
+    name: '湛卢星流',
+    style: '经济滚雪球 · 视野预警 · 精准掠夺 · 蓄势斩首',
+    color: '#2dd4bf',
+    create: createZhanluStarflow,
   },
 ];
 
