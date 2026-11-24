@@ -140,14 +140,16 @@ export function createMyBot(): Bot {
 
 ### 挑战排行榜
 
-[单挑排行榜](LEADERBOARD.md) 由全部内置 bot 两两各打 100 场（交替先后手、固定种子）生成。
+[单挑排行榜](LEADERBOARD.md) 只邀请**当前前十名 + 1 位榜外挑战者**（共 11 位），两两各打 1000 场（交替先后手、固定种子）生成；第 10 名以后的 bot 不再参与打榜。
 
-新 bot 的目标是**打败前十名中的任意一位**：先 `npm run challenge` 让榜外 bot 与当前前十名打一轮瑞士轮（十名对手各 100 场，交替先后手、固定种子），看清自己与每位前十名的对战胜率，再针对性迭代；需要完整对手数据时再跑 `npm run ladder`。
+新 bot 的目标是**打败前十名中的任意一位**：先 `npm run challenge -- --bot=<id>` 让这位榜外 bot 与当前前十名打一轮瑞士轮（十名对手各 1000 场，交替先后手、固定种子），看清自己与每位前十名的对战胜率，再针对性迭代。
+
+**更新排行榜必须和前十名两两打满 1000 场**：每次更新 [LEADERBOARD.md](LEADERBOARD.md) 前，都要让新/变更的选手与当前前十名完成每对 1000 场的完整轮转，共 11 位、55 对、55000 场；打榜线为第 10 名，落榜者退出后续打榜。
 
 ```bash
-npm run challenge                    # 榜外所有 bot 挑战前十
-npm run challenge -- --bot=<id>      # 只让指定 bot 挑战（可用逗号分隔多个）
-npm run challenge -- --games=50      # 调整每个对阵的场数（默认 100）
+npm run ladder -- --bot=<id>          # 打榜：前十 + 1 位挑战者，共 11 位（默认每对各 1000 场）
+npm run challenge -- --bot=<id>       # 只看挑战者对前十的逐场战绩（同样 11 位）
+npm run challenge -- --games=100      # 调整每个对阵的场数（默认 1000）
 ```
 
 前十名名单从 [LEADERBOARD.md](LEADERBOARD.md) 的「前十名」表格读取，榜单更新后命令会自动跟随。
@@ -171,7 +173,7 @@ npm run challenge -- --games=50      # 调整每个对阵的场数（默认 100�
 
 1. 打开 [Bot 提交模板](https://github.com/BlackJack513/ai-game/issues/new?template=bot-submission.yml)
 2. 填写名字、一句话风格、完整代码
-3. 维护者跑自测与对战后合并，之后会出现在网页的选手列表里
+3. 维护者跑自测，再与当前前十名做 11 位打榜（每对 1000 场），确认后合并，之后会出现在网页的选手列表里
 
 代码要求：单个 TypeScript 文件，实现 `Bot` 接口，只依赖 `view`，同意以 MIT 协议收录。
 
@@ -185,7 +187,7 @@ npm run build
 npm run serve   # http://127.0.0.1:5173/
 ```
 
-`npm test` 跑规则自测，`npm run tournament -- --seeds=8` 跑内置 bot 的离线锦标赛，`npm run challenge` 让榜外 bot 与前十名打一轮瑞士轮，`npm run ladder` 跑完整的单挑循环赛并生成排行榜。
+`npm test` 跑规则自测，`npm run tournament -- --seeds=8` 跑内置 bot 的离线锦标赛，`npm run challenge -- --bot=<id>` 让一位榜外 bot 与前十名打一轮瑞士轮（默认为每对 1000 场），`npm run ladder -- --bot=<id>` 跑 11 位打榜循环赛并生成排行榜（默认为每对 1000 场）。
 
 ---
 

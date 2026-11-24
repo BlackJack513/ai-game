@@ -2,9 +2,8 @@
  * 前十挑战赛：打榜选手只需和当前排行榜前十名打一轮瑞士轮，
  * 不必等全量循环赛（全员两两对战）跑完。
  *
- *   npm run challenge                        # 榜外所有 bot 挑战前十
- *   npm run challenge -- --bot=chengying     # 只让指定 bot 挑战（可用 --bot=a,b）
- *   npm run challenge -- --games=50          # 每个对阵的场数（默认 100）
+ *   npm run challenge -- --bot=chengying     # 1 位榜外 bot 挑战前十（共 11 位，每对 1000 场）
+ *   npm run challenge -- --games=100         # 每个对阵的场数（默认 1000）
  *   npm run challenge -- --top=10            # 榜单取前 N 名（默认 10）
  *   npm run challenge -- --json=work/challenge.json
  *
@@ -21,7 +20,7 @@ const args = process.argv.slice(2);
 const readArg = (name) =>
   args.find((arg) => arg.startsWith(`--${name}=`))?.split('=').slice(1).join('=');
 
-const gamesPerPair = Number(readArg('games') ?? process.env.GAMES ?? 100);
+const gamesPerPair = Number(readArg('games') ?? process.env.GAMES ?? 1000);
 const topSize = Number(readArg('top') ?? process.env.TOP ?? 10);
 const seedBase = Number(readArg('seed-base') ?? process.env.SEED_BASE ?? 200_000);
 const jsonOut = readArg('json') ?? process.env.JSON_OUT;
@@ -107,6 +106,13 @@ if (challengers.length === 0) {
 if (new Set(challengers.map((bot) => bot.id)).size !== challengers.length) {
   console.error('--bot 里有重复的选手');
   process.exit(1);
+}
+if (challengers.length > 1) {
+  fail(
+    `打榜只邀请 1 位榜外挑战者，当前榜外有 ${challengers.length} 位（${challengers
+      .map((bot) => bot.id)
+      .join(', ')}），请用 --bot=<id> 指定`,
+  );
 }
 
 /** 轮转编排：奇数人数补一个轮空位，每轮每人最多出场一次，任意两人恰好相遇一次。 */
