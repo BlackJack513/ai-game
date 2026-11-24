@@ -33,6 +33,18 @@ body:
     validations:
       required: true
 
+  - type: dropdown
+    id: track
+    attributes:
+      label: 主攻方向
+      description: 可以只专攻一个榜，也可以两个都打；只打一个榜不会影响另一个榜的评测
+      options:
+        - 双榜（单挑 + 混战都打）
+        - 单挑榜（2 人对战）
+        - 混战榜（4 人乱战）
+    validations:
+      required: true
+
   - type: textarea
     id: code
     attributes:
