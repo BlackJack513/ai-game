@@ -1,10 +1,10 @@
 /**
  * 四人混战排行榜（FFA Ladder）：枚举参赛选手的全部四人组合，
- * 每个组合跑满 N 局混战（默认 20 局），按终局名次给梯度积分排出榜单。
+ * 每个组合跑满 N 局混战（默认 100 局），按终局名次给梯度积分排出榜单，只保留前八名。
  *
  *   node scripts/build.mjs
- *   node scripts/ffa-ladder.mjs                     # 全体 bot，每桌 20 局
- *   node scripts/ffa-ladder.mjs --games=100         # 每桌场数
+ *   node scripts/ffa-ladder.mjs                     # 全体 bot，每桌 100 局
+ *   node scripts/ffa-ladder.mjs --games=20          # 每桌场数
  *   node scripts/ffa-ladder.mjs --pool=pojun,kimik31pro,tianshu,ziwei,tide,viper
  *   node scripts/ffa-ladder.mjs --workers=8         # 并行进程数（默认 CPU-1）
  *   node scripts/ffa-ladder.mjs --json=work/ffa.json
@@ -27,17 +27,18 @@ import { runMatch } from '../js/engine/runner.js';
 const SELF = fileURLToPath(import.meta.url);
 const TABLE_POINTS = [3, 2, 1, 0];
 const TIE_POINTS = [2.5, 2.5, 1, 0];
+const KEEP = 8;
+const KEEP_LABEL = '八';
 
 const args = process.argv.slice(2);
 const option = (name) => args.find((arg) => arg.startsWith(`--${name}=`))?.split('=').slice(1).join('=');
-const hasFlag = (name) => args.includes(`--${name}`);
 
 function fail(message) {
   console.error(message);
   process.exit(1);
 }
 
-const gamesPerTable = Number(option('games') ?? 20);
+const gamesPerTable = Number(option('games') ?? 100);
 const seedOffset = Number(option('offset') ?? 0);
 const poolArg = option('pool');
 const shardArg = option('shard');
@@ -255,13 +256,13 @@ function runLadder() {
     const ranked = rankRows([...totals.rows.values()]);
 
     console.log('\n' + '─'.repeat(92));
-    console.log(' 四人混战排行榜（名次梯度积分，同分看平均名次 → 第一次数）');
+    console.log(' 四人混战排行榜（名次梯度积分，同分看平均名次 → 第一率）');
     console.log(
       ` ${pad('排名', 7)}${pad('选手', 18)}${pad('积分', 9)}${pad('场均分', 9)}${pad('第一', 7)}${pad('平均名次', 10)}${pad('出场', 8)}第一率`,
     );
     ranked.forEach((row, index) => {
       console.log(
-        ` ${pad(`${index + 1}.`, 7)}${pad(label(row.id), 18)}${pad(row.points.toFixed(1), 9)}${pad(row.averagePoints.toFixed(3), 9)}${pad(String(row.firsts), 7)}${pad(row.averageRank.toFixed(2), 10)}${pad(String(row.games), 8)}${(row.firstRate * 100).toFixed(1)}%${index < 5 ? '  ← 前五' : ''}`,
+        ` ${pad(`${index + 1}.`, 7)}${pad(label(row.id), 18)}${pad(row.points.toFixed(1), 9)}${pad(row.averagePoints.toFixed(3), 9)}${pad(String(row.firsts), 7)}${pad(row.averageRank.toFixed(2), 10)}${pad(String(row.games), 8)}${(row.firstRate * 100).toFixed(1)}%${index < KEEP ? `  ← 前${KEEP_LABEL}` : ''}`,
       );
     });
 
@@ -279,6 +280,7 @@ function runLadder() {
             gamesPerTable,
             seedOffset,
             pool: poolIds,
+            keep: KEEP,
             tablePoints: TABLE_POINTS,
             tiePoints: TIE_POINTS,
             totals: {
