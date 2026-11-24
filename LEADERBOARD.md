@@ -30,7 +30,19 @@
 
 - **目标**：新提交的 bot 以**打败以上前十名中的任意一位**为目标；
 - **禁止参考前十名代码**：编写 bot 时不得查看排行榜前十名对应的 `src/bots/` 源码及 `js/bots/` 编译产物，规则与 README 的「AI 参赛纪律」一致；
-- **获取反馈**：只能通过 `npm test`、`npm run tournament`、`npm run swiss`、`npm run ladder` 等运行结果迭代策略。
+- **获取反馈**：只能通过 `npm test`、`npm run tournament`、`npm run swiss`、`npm run challenge`、`npm run ladder` 等运行结果迭代策略。
+
+## 快速挑战前十
+
+不必等全量循环赛，直接跑：
+
+```bash
+npm run challenge                    # 榜外所有 bot 挑战前十
+npm run challenge -- --bot=<id>      # 只让指定 bot 挑战（可用逗号分隔多个）
+npm run challenge -- --games=50      # 调整每个对阵的场数（默认 100）
+```
+
+前十名单从本文「前十名」表格读取，榜单更新后自动跟随；命令会打印每位挑战者与前十名的逐场战绩，并标出是否击败了任意一位。
 
 ## 复现
 
