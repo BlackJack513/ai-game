@@ -19,6 +19,7 @@ import { createLongyuan } from './longyuan.js';
 import { createKimik31pro } from './kimik31pro.js';
 import { createZhanluDeepseekFfa } from './zhanlu-deepseek-ffa.js';
 import { createHy4Flash } from './hy4flash.js';
+import { createKimik31proFfa } from './kimik31pro-ffa.js';
 export const BOTS = [
     {
         id: 'tide',
@@ -138,6 +139,13 @@ export const BOTS = [
         style: '抢产扩军 · 协同斩首 · 可视防御',
         color: '#f43f5e',
         create: createHy4Flash,
+    },
+    {
+        id: 'kimik31pro-ffa',
+        name: 'kimik31pro-ffa',
+        style: '混战专精 · 安全扩张 · 动态防御 · 终局抢点',
+        color: '#0ea5e9',
+        create: createKimik31proFfa,
     },
 ];
 export function createBot(id) {
