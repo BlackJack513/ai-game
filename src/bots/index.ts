@@ -22,6 +22,9 @@ import { createKimik31pro } from './kimik31pro.js';
 import { createZhanluDeepseekFfa } from './zhanlu-deepseek-ffa.js';
 import { createHy4Flash } from './hy4flash.js';
 import { createKimik31proFfa } from './kimik31pro-ffa.js';
+import { createHy4FlashFfa } from './hy4flash-ffa.js';
+import { createLiekong } from './liekong.js';
+import { createZhanluSilkworm } from './jiance.js';
 
 export interface BotEntry {
   id: string;
@@ -158,6 +161,27 @@ export const BOTS: BotEntry[] = [
     style: '混战专精 · 安全扩张 · 动态防御 · 终局抢点',
     color: '#0ea5e9',
     create: createKimik31proFfa,
+  },
+  {
+    id: 'hy4flash-ffa',
+    name: 'hy4flash-ffa',
+    style: '混战专精 · 威胁感知 · 经济扩张 · 同回合合击 · 伺机斩首',
+    color: '#f472b6',
+    create: createHy4FlashFfa,
+  },
+  {
+    id: 'liekong',
+    name: '裂空',
+    style: '经济滚雪球 · 视野预警 · 多源合击 · 终局斩首',
+    color: '#d946ef',
+    create: createLiekong,
+  },
+  {
+    id: 'jiance',
+    name: '简策',
+    style: '分兵扩产 · 抢产优先 · 见缝蚕食',
+    color: '#14b8a6',
+    create: createZhanluSilkworm,
   },
 ];
 
