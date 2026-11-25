@@ -18,6 +18,7 @@ import { createZhanluStarflow } from './zhanlu-starflow.js';
 import { createLongyuan } from './longyuan.js';
 import { createKimik31pro } from './kimik31pro.js';
 import { createZhanluDeepseekFfa } from './zhanlu-deepseek-ffa.js';
+import { createHy4Flash } from './hy4flash.js';
 export const BOTS = [
     {
         id: 'tide',
@@ -130,6 +131,13 @@ export const BOTS = [
         style: '经济压制 · 控图视野 · 多源合击 · 蓄势斩首',
         color: '#84cc16',
         create: createZhanluDeepseekFfa,
+    },
+    {
+        id: 'hy4flash',
+        name: 'hy4flash',
+        style: '抢产扩军 · 协同斩首 · 可视防御',
+        color: '#f43f5e',
+        create: createHy4Flash,
     },
 ];
 export function createBot(id) {
