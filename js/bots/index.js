@@ -17,6 +17,7 @@ import { createChengying } from './chengying.js';
 import { createZhanluStarflow } from './zhanlu-starflow.js';
 import { createLongyuan } from './longyuan.js';
 import { createKimik31pro } from './kimik31pro.js';
+import { createZhanluDeepseekFfa } from './zhanlu-deepseek-ffa.js';
 export const BOTS = [
     {
         id: 'tide',
@@ -122,6 +123,13 @@ export const BOTS = [
         style: '经济竞速 · 风险调度 · 同步合击 · 精准斩首',
         color: '#60a5fa',
         create: createKimik31pro,
+    },
+    {
+        id: 'zhanlu-deepseek-ffa',
+        name: '湛卢混战',
+        style: '经济压制 · 控图视野 · 多源合击 · 蓄势斩首',
+        color: '#84cc16',
+        create: createZhanluDeepseekFfa,
     },
 ];
 export function createBot(id) {
