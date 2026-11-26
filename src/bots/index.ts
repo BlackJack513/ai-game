@@ -27,6 +27,7 @@ import { createLiekong } from './liekong.js';
 import { createZhanluSilkworm } from './jiance.js';
 import { createJingtun } from './jingtun.js';
 import { createHy4BlitzFfa } from './hy4blitz-ffa.js';
+import { createPoyun } from './poyun.js';
 
 export interface BotEntry {
   id: string;
@@ -198,6 +199,13 @@ export const BOTS: BotEntry[] = [
     style: '混战专精 · 极限扩产 · 近家清剿 · 重兵围歼 · 条件斩首',
     color: '#f59e0b',
     create: createHy4BlitzFfa,
+  },
+  {
+    id: 'poyun',
+    name: '破云',
+    style: '破环断援 · 桥头蓄势 · 贴脸斩首',
+    color: '#dc2626',
+    create: createPoyun,
   },
 ];
 
