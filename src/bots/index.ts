@@ -29,6 +29,7 @@ import { createJingtun } from './jingtun.js';
 import { createHy4BlitzFfa } from './hy4blitz-ffa.js';
 import { createPoyun } from './poyun.js';
 import { createSuanli } from './suanli.js';
+import { createDafeiyu } from './dafeiyu.js';
 
 export interface BotEntry {
   id: string;
@@ -214,6 +215,13 @@ export const BOTS: BotEntry[] = [
     style: '自适应开局 · 精确调度 · 协同斩首',
     color: '#7c3aed',
     create: createSuanli,
+  },
+  {
+    id: 'dafeiyu',
+    name: '大肥鱼',
+    style: '家门口抢产 · 余粮前置 · 见空即斩',
+    color: '#0891b2',
+    create: createDafeiyu,
   },
 ];
 

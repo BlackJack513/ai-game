@@ -11,7 +11,7 @@ import { BOTS, type BotEntry } from './index.js';
 export type ArenaTrack = 'duel' | 'ffa';
 
 /** 明确只打单挑、不参加四人混战的 bot。 */
-export const DUEL_ONLY_BOT_IDS: readonly string[] = ['chengying', 'poyun', 'suanli'];
+export const DUEL_ONLY_BOT_IDS: readonly string[] = ['chengying', 'poyun', 'suanli', 'dafeiyu'];
 
 const duelOnly = new Set(DUEL_ONLY_BOT_IDS);
 
