@@ -25,6 +25,7 @@ import { createKimik31proFfa } from './kimik31pro-ffa.js';
 import { createHy4FlashFfa } from './hy4flash-ffa.js';
 import { createLiekong } from './liekong.js';
 import { createZhanluSilkworm } from './jiance.js';
+import { createJingtun } from './jingtun.js';
 
 export interface BotEntry {
   id: string;
@@ -182,6 +183,13 @@ export const BOTS: BotEntry[] = [
     style: '分兵扩产 · 抢产优先 · 见缝蚕食',
     color: '#14b8a6',
     create: createZhanluSilkworm,
+  },
+  {
+    id: 'jingtun',
+    name: '鲸吞',
+    style: '极致产能 · 全兵上岗 · 以战养战',
+    color: '#a3e635',
+    create: createJingtun,
   },
 ];
 
