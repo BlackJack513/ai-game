@@ -20,6 +20,9 @@
  * 判定并列第一（winner 为 null）时前两名各 2.5 分。
  * 每局桌内座位按 (桌序号 + 局数) 循环移位，消除出生位偏差。
  *
+ * 参赛名单默认取混战池（src/bots/pools.ts）：明确只打单挑的 bot 不进池。
+ * --pool 只能在混战池内挑选，单挑专用 bot 会报错，避免混入噪声。
+ *
  * 注意：跑的是 js/ 里的编译产物，改完 src 记得先 node scripts/build.mjs。
  */
 
@@ -28,7 +31,7 @@ import { writeFileSync } from 'node:fs';
 import { cpus } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import { BOTS } from '../js/bots/index.js';
+import { DUEL_ONLY_BOTS, FFA_POOL } from '../js/bots/pools.js';
 import { runMatch } from '../js/engine/runner.js';
 import { Rng, seedFrom } from '../js/engine/rng.js';
 
@@ -72,13 +75,19 @@ if (!Number.isFinite(seedOffset)) fail('--offset 必须是数字');
 
 const poolIds = poolArg
   ? poolArg.split(',').map((id) => id.trim()).filter(Boolean)
-  : BOTS.map((bot) => bot.id);
+  : FFA_POOL.map((bot) => bot.id);
 if (new Set(poolIds).size !== poolIds.length) fail('--pool 里有重复的选手');
 if (poolIds.length < 4) fail('四人混战至少需要 4 名选手');
 
+const duelOnly = new Set(DUEL_ONLY_BOTS.map((entry) => entry.id));
+const excluded = poolIds.filter((id) => duelOnly.has(id));
+if (excluded.length > 0) {
+  fail(`${excluded.join(', ')} 是单挑专用 bot，不参加混战池（混战池可选：${FFA_POOL.map((entry) => entry.id).join(', ')}）`);
+}
+
 const pool = poolIds.map((id) => {
-  const bot = BOTS.find((entry) => entry.id === id);
-  if (!bot) fail(`未知选手：${id}（可选：${BOTS.map((entry) => entry.id).join(', ')}）`);
+  const bot = FFA_POOL.find((entry) => entry.id === id);
+  if (!bot) fail(`未知选手：${id}（混战池可选：${FFA_POOL.map((entry) => entry.id).join(', ')}）`);
   return bot;
 });
 
@@ -436,6 +445,9 @@ function printDesign(allTables) {
       : `${stats.minPlayed}–${stats.maxPlayed} 桌`;
   console.log(`\n四人混战排行榜 · ${design === 'full' ? '全组合' : '平衡轮转'} · ${pool.length} 名选手`);
   console.log(
+    ` 混战池 ${FFA_POOL.length} 人 · 不参赛的单挑专用 bot：${DUEL_ONLY_BOTS.map((entry) => entry.name).join('、')}`,
+  );
+  console.log(
     ` ${stats.tables} 桌 × 每桌 ${gamesPerTable} 局 = ${gamesTotal} 局 · 每人约 ${perBotText}`,
   );
   console.log(
@@ -530,7 +542,7 @@ function runLadder(tables) {
     const intervals = bootstrapIntervals(orderedScores);
 
     console.log('\n' + '─'.repeat(104));
-    console.log(' 四人混战排行榜（全员平衡轮转 · 场均名次分 · 桌级 bootstrap 区间）');
+    console.log(' 四人混战排行榜（混战池平衡轮转 · 场均名次分 · 桌级 bootstrap 区间）');
     console.log(
       ` ${pad('排名', 7)}${pad('选手', 18)}${pad('场均分', 9)}${pad('区间', 20)}${pad('总积分', 10)}${pad('第一率', 8)}${pad('平均名次', 10)}出场桌`,
     );

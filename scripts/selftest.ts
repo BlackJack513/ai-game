@@ -9,6 +9,7 @@ declare const process: { exit(code?: number): never };
  */
 
 import { BOTS, createBot } from '../src/bots/index.js';
+import { DUEL_ONLY_BOT_IDS, FFA_POOL } from '../src/bots/pools.js';
 import { generateMap } from '../src/engine/mapgen.js';
 import { Match, runMatch } from '../src/engine/runner.js';
 import {
@@ -901,6 +902,16 @@ test('内置 bot 都能创建且风格互补', () => {
     eq(bot.name, entry.name, `${entry.id} 的名称`);
     assert(entry.style.length > 0, `${entry.id} 缺少风格描述`);
     assert(/^#[0-9a-f]{6}$/i.test(entry.color), `${entry.id} 颜色格式`);
+  }
+});
+
+test('混战池排除单挑专用 bot', () => {
+  eq(FFA_POOL.length, BOTS.length - DUEL_ONLY_BOT_IDS.length, '混战池人数');
+  assert(FFA_POOL.length >= 4, '混战池至少 4 名选手');
+  eq(new Set(FFA_POOL.map((entry) => entry.id)).size, FFA_POOL.length, '混战池无重复选手');
+  for (const id of DUEL_ONLY_BOT_IDS) {
+    assert(BOTS.some((entry) => entry.id === id), `${id} 必须登记在内置 bot 里`);
+    assert(!FFA_POOL.some((entry) => entry.id === id), `${id} 不应进入混战池`);
   }
 });
 
