@@ -4,6 +4,9 @@
  * 计算机 AI 每回合一次性返回指令，真人则需要「看看局面 → 下几条令 → 结束回合」。
  * 这个类只做一件事：维护当前回合的待发指令，并在提交前按引擎规则做一次预校验，
  * 让点击操作获得即时反馈，而不是等回合结算时才看到「指令被驳回」。
+ *
+ * 一条指令的流程固定为：点起点 → 点终点 → 输入兵力确认。
+ * 确认后起点自动清空，直接点下一个起点即可，不用再点一次起点取消。
  */
 import { findPath } from '../engine/sim.js';
 import { RULES } from '../engine/types.js';
@@ -12,6 +15,7 @@ export class HumanPlan {
     /** 玩家编号：真人固定坐 0 号位。 */
     player = 0;
     selected = null;
+    pending = null;
     orders = [];
     constructor(state) {
         this.state = state;
@@ -19,8 +23,12 @@ export class HumanPlan {
     get maxOrders() {
         return RULES.maxOrders;
     }
-    /** 选中一个己方节点作为出兵起点；再点一次取消。 */
+    /**
+     * 选中一个己方节点作为出兵起点；再点一次取消。
+     * 换起点或取消时，尚未确认的目标也一并丢弃。
+     */
     select(nodeId) {
+        this.pending = null;
         if (nodeId === null) {
             this.selected = null;
             return;
@@ -29,6 +37,11 @@ export class HumanPlan {
         if (!node || node.owner !== this.player)
             return;
         this.selected = this.selected === nodeId ? null : nodeId;
+    }
+    /** 取消当前整条指令（起点 + 目标）。 */
+    cancel() {
+        this.selected = null;
+        this.pending = null;
     }
     /** 节点当前兵力扣除本回合已下达指令后的余额。 */
     availableAt(nodeId) {
@@ -54,8 +67,8 @@ export class HumanPlan {
         }
         return list;
     }
-    /** 添加一条指令。所有规则限制在这里先检查一遍。 */
-    add(to, troops) {
+    /** 选好目标，等待输入兵力。所有规则限制在这里先检查一遍。 */
+    begin(to) {
         const from = this.selected;
         if (from === null)
             return { ok: false, error: '先点一个你的节点' };
@@ -67,16 +80,28 @@ export class HumanPlan {
         if (this.orders.some((order) => order.from === from && order.to === to)) {
             return { ok: false, error: '这条路线已经下令了' };
         }
+        if (this.availableAt(from) < 1)
+            return { ok: false, error: '该节点已经没有可调的兵' };
         const path = findPath(this.state, from, to);
         if (!path)
             return { ok: false, error: '没有可通行的路径' };
-        const available = this.availableAt(from);
+        this.pending = { from, to, path };
+        return { ok: true };
+    }
+    /** 确认兵力，把等待中的指令落成待发指令，并自动清空起点。 */
+    commit(troops) {
+        const pending = this.pending;
+        if (!pending)
+            return { ok: false, error: '还没有选择目标节点' };
+        const available = this.availableAt(pending.from);
         const amount = Math.floor(troops);
         if (!Number.isFinite(amount) || amount < 1)
             return { ok: false, error: '兵力必须 ≥ 1' };
         if (amount > available)
             return { ok: false, error: `该节点只剩 ${available} 兵可用` };
-        this.orders.push({ from, to, troops: amount, path });
+        this.orders.push({ ...pending, troops: amount });
+        this.selected = null;
+        this.pending = null;
         return { ok: true };
     }
     remove(index) {

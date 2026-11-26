@@ -235,8 +235,23 @@ check('起点显示可用兵力', text('cmd-hint').includes('可用 20 兵'), te
 
 canvas.dispatchEvent(new window.MouseEvent('click', { clientX: targetPoint.x, clientY: targetPoint.y, bubbles: true }));
 pump(1);
-check('点击目标生成一条出兵令', text('order-count') === '1 / 5', text('order-count'));
+check('点击目标后询问兵力', document.getElementById('cmd-troops-row').hidden === false);
+check('提示显示起点与目标', text('cmd-hint').includes('→ 目标'), text('cmd-hint'));
+check('尚未生成指令', text('order-count') === '0 / 5', text('order-count'));
+
+const troops = document.getElementById('cmd-troops');
+troops.value = '12';
+troops.dispatchEvent(new window.Event('change', { bubbles: true }));
+document.getElementById('btn-confirm-order').click();
+pump(1);
+check('输入兵力确认后生成一条出兵令', text('order-count') === '1 / 5', text('order-count'));
 check('指令列表出现 1 条', document.querySelectorAll('#cmd-list .cmd-item').length === 1);
+check('确认后自动清空起点', text('cmd-hint').includes('选择出兵起点'), text('cmd-hint'));
+check('确认后隐藏兵力输入行', document.getElementById('cmd-troops-row').hidden === true);
+
+canvas.dispatchEvent(new window.MouseEvent('click', { clientX: homePoint.x, clientY: homePoint.y, bubbles: true }));
+pump(1);
+check('无需再点取消即可选下一个起点', text('cmd-hint').includes(`起点：老家 #${home}`), text('cmd-hint'));
 
 document.getElementById('btn-end-turn').click();
 pump(2);

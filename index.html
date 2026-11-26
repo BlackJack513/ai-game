@@ -113,6 +113,7 @@
                 <label for="cmd-troops">派出兵力</label>
                 <input id="cmd-troops" type="number" min="1" max="100" step="1" inputmode="numeric" />
                 <button class="btn ghost small" id="btn-max" type="button">全部</button>
+                <button class="btn primary small" id="btn-confirm-order" type="button">确认</button>
               </div>
               <ul class="cmd-list" id="cmd-list"></ul>
               <div class="cmd-warn" id="cmd-warn" role="status"></div>
@@ -186,7 +187,7 @@
         <h3>终局</h3>
         <p>150 回合仍未分出胜负时：先比节点数，再比总兵力，仍相同则判和。所以龟缩拖延并不划算。</p>
         <h3>亲自出战</h3>
-        <p>在「对战方式」里选「我来挑战」：你坐 1 号位，以战争迷雾视角对抗榜单 AI。点击你的节点作为起点，设定兵力后点击目标节点下令，最多 5 条；想好后点击底部「结束回合」，AI 会在同一时刻下令并一起结算。</p>
+        <p>在「对战方式」里选「我来挑战」：你坐 1 号位，以战争迷雾视角对抗榜单 AI。点击你的节点作为起点，再点目标节点，输入兵力后按回车确认，一条指令就下好了；每条确认后起点自动清空，直接点下一个起点即可，最多 5 条，也能在右侧列表逐条撤销。想好后点击底部「结束回合」，AI 会在同一时刻下令并一起结算。</p>
         <h3>写一个 bot</h3>
         <p>实现 <code>Bot</code> 接口的 <code>decide(view: Observation): Order[]</code> 即可，所有信息都来自 <code>view</code>，引擎保证确定性。详见仓库 README。</p>
       </div>

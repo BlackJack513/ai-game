@@ -88,6 +88,7 @@ const orderCount = el('order-count');
 const cmdHint = el('cmd-hint');
 const cmdTroopsRow = el('cmd-troops-row');
 const cmdTroops = el('cmd-troops');
+const confirmOrderButton = el('btn-confirm-order');
 const cmdList = el('cmd-list');
 const cmdWarn = el('cmd-warn');
 const cmdSummary = el('cmd-summary');
@@ -441,6 +442,7 @@ function syncCommandUi() {
     const alive = current.state.players[0].alive;
     const finished = current.finished;
     const selected = plan.selected;
+    const pending = plan.pending;
     orderCount.textContent = `${plan.orders.length} / ${plan.maxOrders}`;
     cmdSummary.textContent =
         `第 ${frame.turn} 回合 · 你的节点 ${me?.nodes ?? 0} · 兵力 ${me?.troops ?? 0} · 产出 +${me?.production ?? 0}` +
@@ -459,19 +461,25 @@ function syncCommandUi() {
         cmdList.append(item);
         return;
     }
-    if (selected === null) {
+    if (pending) {
+        const from = pending.from;
+        const available = plan.availableAt(from);
+        cmdHint.textContent =
+            `起点：${nodeLabel(from)} → 目标：${nodeLabel(pending.to)} · 可用 ${available} 兵。` +
+                '输入派出兵力，回车确认（Esc 取消）。';
+    }
+    else if (selected === null) {
         cmdHint.textContent = '点击你的节点选择出兵起点。';
     }
     else {
         const node = match.map.nodes[selected];
         const kind = node ? KIND_LABEL[node.kind] : '节点';
         cmdHint.textContent =
-            `起点：${kind} #${selected} · 可用 ${plan.availableAt(selected)} 兵。` +
-                '点击目标节点下令（再点起点可取消）。';
+            `起点：${kind} #${selected} · 可用 ${plan.availableAt(selected)} 兵。` + '点击目标节点派兵（Esc 取消）。';
     }
-    cmdTroopsRow.hidden = selected === null;
-    if (selected !== null) {
-        const available = plan.availableAt(selected);
+    cmdTroopsRow.hidden = pending === null;
+    if (pending) {
+        const available = plan.availableAt(pending.from);
         const parsed = Number.parseInt(cmdTroops.value, 10);
         if (!Number.isFinite(parsed) || parsed > available || parsed < 1) {
             cmdTroops.value = String(Math.max(1, available));
@@ -479,6 +487,7 @@ function syncCommandUi() {
         cmdTroops.max = String(Math.max(1, available));
         cmdTroops.disabled = available < 1;
         el('btn-max').disabled = available < 1;
+        confirmOrderButton.disabled = available < 1;
     }
     if (plan.orders.length === 0) {
         const item = document.createElement('li');
@@ -520,6 +529,17 @@ function endTurn() {
     const current = live;
     if (!current || !plan || !match || current.finished)
         return;
+    // 已选好起终点、还没来得及按回车的指令，按输入框当前兵力一并提交
+    if (plan.pending) {
+        const available = plan.availableAt(plan.pending.from);
+        const parsed = Number.parseInt(cmdTroops.value, 10);
+        const result = plan.commit(Number.isFinite(parsed) ? parsed : available);
+        if (!result.ok) {
+            setWarn(result.error ?? '无法下令');
+            return;
+        }
+        targetsCache = [];
+    }
     setWarn('');
     const alive = current.state.players[0].alive;
     const orders = alive ? plan.toOrders() : [];
@@ -538,6 +558,38 @@ function endTurn() {
     syncHumanFrame();
     setPlaying(false);
 }
+/** 进入「等玩家输入兵力」状态：填好默认值并聚焦输入框。 */
+function prepareTroopsInput() {
+    setWarn('');
+    if (!plan?.pending)
+        return;
+    const available = plan.availableAt(plan.pending.from);
+    cmdTroops.value = String(Math.max(1, available));
+    syncCommandUi();
+    cmdTroops.focus();
+    cmdTroops.select();
+}
+/** 确认当前指令的兵力，落成待发指令；起点自动清空，等待下一条。 */
+function commitOrder() {
+    if (!plan?.pending)
+        return;
+    const available = plan.availableAt(plan.pending.from);
+    const parsed = Number.parseInt(cmdTroops.value, 10);
+    const result = plan.commit(Number.isFinite(parsed) ? parsed : available);
+    if (!result.ok) {
+        setWarn(result.error ?? '无法下令');
+        return;
+    }
+    targetsCache = [];
+    setWarn('');
+    syncCommandUi();
+}
+function cancelSelection() {
+    plan?.cancel();
+    targetsCache = [];
+    setWarn('');
+    syncCommandUi();
+}
 function handleNodeClick(nodeId) {
     const current = live;
     if (!current || !plan || current.finished)
@@ -545,6 +597,20 @@ function handleNodeClick(nodeId) {
     if (!current.state.players[0].alive)
         return;
     const owner = current.state.nodes[nodeId].owner;
+    // 正在输入兵力：点起点取消整条指令，点其他节点则改换目标
+    if (plan.pending) {
+        if (nodeId === plan.pending.from) {
+            cancelSelection();
+            return;
+        }
+        const result = plan.begin(nodeId);
+        if (!result.ok) {
+            setWarn(result.error ?? '无法下令');
+            return;
+        }
+        prepareTroopsInput();
+        return;
+    }
     if (plan.selected === null) {
         if (owner !== plan.player) {
             setWarn('先点你自己的节点作为起点');
@@ -552,32 +618,21 @@ function handleNodeClick(nodeId) {
         }
         plan.select(nodeId);
         targetsCache = plan.targets();
-        cmdTroops.value = String(Math.max(1, plan.availableAt(nodeId)));
         setWarn('');
         syncCommandUi();
         return;
     }
     // 再点起点 = 取消选择；其他任何可达节点（包括自己的节点）都作为派兵目标
     if (nodeId === plan.selected) {
-        plan.select(nodeId);
-        targetsCache = [];
-        setWarn('');
-        syncCommandUi();
+        cancelSelection();
         return;
     }
-    const fallback = plan.availableAt(plan.selected);
-    const typed = Number.parseInt(cmdTroops.value, 10);
-    const result = plan.add(nodeId, Number.isFinite(typed) ? typed : fallback);
+    const result = plan.begin(nodeId);
     if (!result.ok) {
         setWarn(result.error ?? '无法下令');
         return;
     }
-    setWarn('');
-    if (plan.selected !== null) {
-        cmdTroops.value = String(Math.max(1, plan.availableAt(plan.selected)));
-    }
-    targetsCache = plan.targets();
-    syncCommandUi();
+    prepareTroopsInput();
 }
 // ---------------------------------------------------------------------------
 // 帧同步与横幅
@@ -721,6 +776,8 @@ function draw(time) {
         time,
         selected: human ? plan?.selected ?? null : null,
         targets: human ? targetsCache : undefined,
+        pending: human ? plan?.pending?.to ?? null : null,
+        previewPath: human ? plan?.pending?.path : undefined,
         plan: human ? plan?.orders : undefined,
     });
 }
@@ -783,12 +840,21 @@ canvas.addEventListener('mousemove', (event) => {
     const color = state.owner >= 0 ? PLAYER_COLORS[state.owner] : '#64748b';
     let action = '';
     if (isHumanMatch() && plan && !live?.finished && live?.state.players[0].alive) {
-        if (plan.selected === node.id) {
+        if (plan.pending?.to === node.id) {
+            action = '<div class="tt-row">已选为出兵终点，输入兵力后确认</div>';
+        }
+        else if (plan.pending?.from === node.id) {
+            action = '<div class="tt-row">出兵起点，点击可取消这条指令</div>';
+        }
+        else if (plan.selected === node.id) {
             action = '<div class="tt-row">已选为起点，再点一次取消</div>';
         }
         else if (plan.selected === null) {
             if (state.owner === 0)
                 action = '<div class="tt-row">点击选择为出兵起点</div>';
+        }
+        else if (plan.pending) {
+            action = '<div class="tt-row">点击改选出兵终点</div>';
         }
         else if (targetsCache.includes(node.id)) {
             action = `<div class="tt-row">点击${state.owner === 0 ? '调兵到' : '派兵到'}这里</div>`;
@@ -877,10 +943,12 @@ el('btn-replay').addEventListener('click', () => {
 });
 endTurnButton.addEventListener('click', () => endTurn());
 el('btn-max').addEventListener('click', () => {
-    if (!plan || plan.selected === null)
+    if (!plan?.pending)
         return;
-    cmdTroops.value = String(Math.max(1, plan.availableAt(plan.selected)));
+    cmdTroops.value = String(Math.max(1, plan.availableAt(plan.pending.from)));
+    cmdTroops.focus();
 });
+confirmOrderButton.addEventListener('click', () => commitOrder());
 el('btn-clear-orders').addEventListener('click', () => {
     plan?.clear();
     targetsCache = plan?.targets() ?? [];
@@ -888,12 +956,22 @@ el('btn-clear-orders').addEventListener('click', () => {
     syncCommandUi();
 });
 cmdTroops.addEventListener('change', () => {
-    if (!plan || plan.selected === null)
+    if (!plan?.pending)
         return;
-    const available = plan.availableAt(plan.selected);
+    const available = plan.availableAt(plan.pending.from);
     const parsed = Number.parseInt(cmdTroops.value, 10);
     const value = Number.isFinite(parsed) ? Math.max(1, Math.min(available, parsed)) : Math.max(1, available);
     cmdTroops.value = String(value);
+});
+cmdTroops.addEventListener('keydown', (event) => {
+    if (event.code === 'Enter') {
+        event.preventDefault();
+        commitOrder();
+    }
+    else if (event.code === 'Escape') {
+        event.preventDefault();
+        cancelSelection();
+    }
 });
 el('btn-first').addEventListener('click', () => jumpTo(0));
 el('btn-prev').addEventListener('click', () => step(-1));
@@ -941,10 +1019,7 @@ window.addEventListener('keydown', (event) => {
             endTurn();
         }
         else if (event.code === 'Escape' && plan) {
-            plan.selected = null;
-            targetsCache = [];
-            setWarn('');
-            syncCommandUi();
+            cancelSelection();
         }
         return;
     }

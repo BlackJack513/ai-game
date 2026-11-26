@@ -253,8 +253,26 @@ export class BoardRenderer {
                 ctx.stroke();
                 ctx.setLineDash([]);
             }
+            // 已选好终点、等待输入兵力：琥珀色脉冲环
+            if (input.pending === node.id) {
+                const pulse = 0.6 + 0.3 * Math.sin(input.time * 4.5);
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, r + 9, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(251, 191, 36, ${pulse})`;
+                ctx.lineWidth = 2.4;
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, r + 15, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(251, 191, 36, 0.32)';
+                ctx.lineWidth = 1.2;
+                ctx.setLineDash([2, 5]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
         }
         // ---- 真人待发指令 -----------------------------------------------------
+        if (input.previewPath)
+            this.drawPreview(input, input.previewPath, base);
         for (const order of input.plan ?? [])
             this.drawPlan(input, order, base);
         // ---- 攻占闪光 ---------------------------------------------------------
@@ -274,6 +292,41 @@ export class BoardRenderer {
             ctx.lineWidth = 2.4 * (1 - t) + 0.6;
             ctx.stroke();
         }
+    }
+    /** 画一条「已选终点、还没输入兵力」的预览路径。 */
+    drawPreview(input, path, base) {
+        if (path.length < 2)
+            return;
+        const ctx = this.ctx;
+        const start = input.map.nodes[path[0]];
+        const first = this.toScreen(start.x, start.y);
+        ctx.beginPath();
+        ctx.moveTo(first.x, first.y);
+        for (let i = 1; i < path.length; i++) {
+            const node = input.map.nodes[path[i]];
+            const point = this.toScreen(node.x, node.y);
+            ctx.lineTo(point.x, point.y);
+        }
+        ctx.strokeStyle = 'rgba(251, 191, 36, 0.55)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([7, 6]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        const a = input.map.nodes[path[path.length - 2]];
+        const b = input.map.nodes[path[path.length - 1]];
+        const pb = this.toScreen(b.x, b.y);
+        const dir = Math.atan2(b.y - a.y, b.x - a.x);
+        const size = Math.max(8, base * 0.38);
+        ctx.beginPath();
+        ctx.moveTo(pb.x + Math.cos(dir) * size, pb.y + Math.sin(dir) * size);
+        ctx.lineTo(pb.x + Math.cos(dir + 2.5) * size, pb.y + Math.sin(dir + 2.5) * size);
+        ctx.lineTo(pb.x + Math.cos(dir - 2.5) * size, pb.y + Math.sin(dir - 2.5) * size);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(251, 191, 36, 0.9)';
+        ctx.shadowColor = 'rgba(251, 191, 36, 0.8)';
+        ctx.shadowBlur = 10;
+        ctx.fill();
+        ctx.shadowBlur = 0;
     }
     /** 画一条「已下令、还没结算」的出兵令：虚线路径 + 终点箭头 + 兵力。 */
     drawPlan(input, order, base) {
