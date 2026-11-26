@@ -24,6 +24,7 @@ import { createHy4FlashFfa } from './hy4flash-ffa.js';
 import { createLiekong } from './liekong.js';
 import { createZhanluSilkworm } from './jiance.js';
 import { createJingtun } from './jingtun.js';
+import { createHy4BlitzFfa } from './hy4blitz-ffa.js';
 export const BOTS = [
     {
         id: 'tide',
@@ -178,6 +179,13 @@ export const BOTS = [
         style: '极致产能 · 全兵上岗 · 以战养战',
         color: '#a3e635',
         create: createJingtun,
+    },
+    {
+        id: 'hy4blitz-ffa',
+        name: 'hy4blitz-ffa',
+        style: '混战专精 · 极限扩产 · 近家清剿 · 重兵围歼 · 条件斩首',
+        color: '#f59e0b',
+        create: createHy4BlitzFfa,
     },
 ];
 export function createBot(id) {
