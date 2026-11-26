@@ -26,6 +26,7 @@ import { createZhanluSilkworm } from './jiance.js';
 import { createJingtun } from './jingtun.js';
 import { createHy4BlitzFfa } from './hy4blitz-ffa.js';
 import { createPoyun } from './poyun.js';
+import { createSuanli } from './suanli.js';
 export const BOTS = [
     {
         id: 'tide',
@@ -194,6 +195,13 @@ export const BOTS = [
         style: '破环断援 · 桥头蓄势 · 贴脸斩首',
         color: '#dc2626',
         create: createPoyun,
+    },
+    {
+        id: 'suanli',
+        name: '算力',
+        style: '自适应开局 · 精确调度 · 协同斩首',
+        color: '#7c3aed',
+        create: createSuanli,
     },
 ];
 export function createBot(id) {
