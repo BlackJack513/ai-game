@@ -446,10 +446,12 @@ function syncCommandUi() {
         `第 ${frame.turn} 回合 · 你的节点 ${me?.nodes ?? 0} · 兵力 ${me?.troops ?? 0} · 产出 +${me?.production ?? 0}` +
             ` · 指令 ${plan.orders.length}/${plan.maxOrders}`;
     endTurnButton.disabled = finished;
-    endTurnButton.textContent = alive ? '结束回合' : '继续观战';
+    endTurnButton.textContent = alive ? '结束回合' : '快进到结局';
     cmdList.innerHTML = '';
     if (!alive || finished) {
-        cmdHint.textContent = alive ? '对局结束。' : '你已被淘汰，可以继续推进回合观战。';
+        if (!alive)
+            orderCount.textContent = '—';
+        cmdHint.textContent = alive ? '对局结束。' : '你已被淘汰，点击「快进到结局」直接看完剩余对局。';
         cmdTroopsRow.hidden = true;
         const item = document.createElement('li');
         item.className = 'cmd-empty';
@@ -519,8 +521,17 @@ function endTurn() {
     if (!current || !plan || !match || current.finished)
         return;
     setWarn('');
-    const orders = current.state.players[0].alive ? plan.toOrders() : [];
+    const alive = current.state.players[0].alive;
+    const orders = alive ? plan.toOrders() : [];
     current.step(new Map([[0, orders]]));
+    // 玩家已出局：不再需要每回合思考，一次把剩余对局推演完
+    if (!alive) {
+        let guard = 0;
+        while (!current.finished && guard < RULES.maxTurns) {
+            current.step();
+            guard++;
+        }
+    }
     match = current.result();
     plan = new HumanPlan(current.state);
     targetsCache = [];
