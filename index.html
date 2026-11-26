@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="description" content="星流 Starflow —— 给 AI 写程序互相博弈的同时回合制兵力流动战，浏览器内观战沙盘。" />
+    <meta name="description" content="星流 Starflow —— 给 AI 写程序互相博弈的同时回合制兵力流动战，浏览器内观战或亲自挑战榜单 AI。" />
     <meta name="theme-color" content="#070b14" />
     <title>星流 Starflow · AI 对战沙盘</title>
     <link rel="stylesheet" href="./style.css" />
@@ -16,7 +16,7 @@
           <span class="brand-name">星流</span>
           <span class="brand-latin">STARFLOW</span>
         </div>
-        <p class="tagline">同时回合制 · 兵力流动 · AI 观战沙盘</p>
+        <p class="tagline">同时回合制 · 兵力流动 · AI 观战与真人挑战</p>
         <div class="topbar-actions">
           <a class="btn ghost small" href="https://github.com/BlackJack513/ai-game" target="_blank" rel="noreferrer">GitHub</a>
           <button class="btn ghost small" id="btn-rules">规则速查</button>
@@ -32,6 +32,14 @@
             <div class="seg" id="mode-seg">
               <button type="button" data-mode="duel" class="on">单挑 1v1</button>
               <button type="button" data-mode="ffa">四人混战</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="field-label">对战方式</label>
+            <div class="seg" id="seat-seg">
+              <button type="button" data-seat="watch" class="on">AI 观战</button>
+              <button type="button" data-seat="human">我来挑战</button>
             </div>
           </div>
 
@@ -52,7 +60,7 @@
             <label class="check" for="fog">
               <input type="checkbox" id="fog" />
               <span class="check-box"></span>
-              <span>战争迷雾 <em>以玩家 1 的视角观战</em></span>
+              <span>战争迷雾 <em id="fog-hint">以玩家 1 的视角观战</em></span>
             </label>
           </div>
 
@@ -89,11 +97,28 @@
           <div class="stage-empty" id="stage-empty">
             <div class="empty-mark">✦</div>
             <p>选择模式与 AI，点击「开始对战」</p>
-            <p class="muted">也可以直接按空格播放默认对局</p>
+            <p class="muted">选择「我来挑战」即可亲自上阵，点击棋盘下令</p>
           </div>
         </section>
 
         <aside class="panel side">
+          <div class="command" id="command" hidden>
+            <div class="side-head command-head">
+              <h2 class="panel-title">你的出兵令</h2>
+              <span class="muted small" id="order-count">0 / 5</span>
+            </div>
+            <div class="command-body">
+              <p class="cmd-hint" id="cmd-hint">点击你的节点，再点目标节点下令。</p>
+              <div class="cmd-troops" id="cmd-troops-row" hidden>
+                <label for="cmd-troops">派出兵力</label>
+                <input id="cmd-troops" type="number" min="1" max="100" step="1" inputmode="numeric" />
+                <button class="btn ghost small" id="btn-max" type="button">全部</button>
+              </div>
+              <ul class="cmd-list" id="cmd-list"></ul>
+              <div class="cmd-warn" id="cmd-warn" role="status"></div>
+              <button class="btn ghost small cmd-clear" id="btn-clear-orders" type="button">清空本回合指令</button>
+            </div>
+          </div>
           <div class="side-head">
             <h2 class="panel-title">战况</h2>
             <span class="muted small" id="side-seed"></span>
@@ -110,14 +135,14 @@
       </main>
 
       <footer class="timeline">
-        <div class="transport">
+        <div class="transport" id="transport">
           <button class="btn icon-btn" id="btn-first" title="回到开局">⏮</button>
           <button class="btn icon-btn" id="btn-prev" title="上一回合">◀</button>
           <button class="btn play-btn" id="btn-play" title="播放 / 暂停（空格）">▶</button>
           <button class="btn icon-btn" id="btn-next" title="下一回合">▶</button>
           <button class="btn icon-btn" id="btn-last" title="跳到结尾">⏭</button>
         </div>
-        <div class="scrub-wrap">
+        <div class="scrub-wrap" id="scrub-wrap">
           <input type="range" id="scrub" min="0" max="0" value="0" step="1" aria-label="回放进度" />
         </div>
         <div class="turn-label" id="turn-label">回合 0 / 0</div>
@@ -126,6 +151,10 @@
           <button type="button" data-speed="1" class="on">1×</button>
           <button type="button" data-speed="2">2×</button>
           <button type="button" data-speed="4">4×</button>
+        </div>
+        <div class="command-bar" id="command-bar" hidden>
+          <div class="cmd-summary" id="cmd-summary">第 1 回合 · 你的节点 — · 兵力 —</div>
+          <button class="btn primary end-turn" id="btn-end-turn" type="button">结束回合</button>
         </div>
       </footer>
     </div>
@@ -156,6 +185,8 @@
         <p>节点归属公开，兵力隐藏：视野外的敌方节点只显示「?」。己方节点 1 跳、老家 2 跳、瞭望塔 3 跳；敌方纵队只要路径经过你的视野就会被看见。</p>
         <h3>终局</h3>
         <p>150 回合仍未分出胜负时：先比节点数，再比总兵力，仍相同则判和。所以龟缩拖延并不划算。</p>
+        <h3>亲自出战</h3>
+        <p>在「对战方式」里选「我来挑战」：你坐 1 号位，以战争迷雾视角对抗榜单 AI。点击你的节点作为起点，设定兵力后点击目标节点下令，最多 5 条；想好后点击底部「结束回合」，AI 会在同一时刻下令并一起结算。</p>
         <h3>写一个 bot</h3>
         <p>实现 <code>Bot</code> 接口的 <code>decide(view: Observation): Order[]</code> 即可，所有信息都来自 <code>view</code>，引擎保证确定性。详见仓库 README。</p>
       </div>

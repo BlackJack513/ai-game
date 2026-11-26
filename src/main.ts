@@ -6,9 +6,10 @@
  */
 
 import { BOTS, botEntry, createBot } from './bots/index.js';
-import { runMatch, type Frame, type MatchResult } from './engine/runner.js';
+import { Match, runMatch, type Frame, type MatchResult } from './engine/runner.js';
 import { computeVision, productionForKind } from './engine/sim.js';
-import { KIND_LABEL, MODE_LABEL, type GameEvent, type Mode, type NodeKind } from './engine/types.js';
+import { KIND_LABEL, MODE_LABEL, RULES, type Bot, type GameEvent, type Mode, type NodeKind } from './engine/types.js';
+import { HumanPlan } from './ui/human.js';
 import { BoardRenderer } from './ui/render.js';
 
 const STORAGE_KEY = 'starflow.settings.v1';
@@ -17,8 +18,11 @@ const PLAYER_COLORS = ['#38bdf8', '#fb7185', '#fbbf24', '#a78bfa'];
 const BASE_TURN_MS = 900;
 const SPEEDS = [0.5, 1, 2, 4];
 
+type Seat = 'watch' | 'human';
+
 interface Settings {
   mode: Mode;
+  seat: Seat;
   seed: number;
   slots: string[];
   fog: boolean;
@@ -27,6 +31,7 @@ interface Settings {
 
 const DEFAULTS: Settings = {
   mode: 'duel',
+  seat: 'watch',
   seed: 2049,
   slots: ['tide', 'viper', 'turtle', 'rookie'],
   fog: false,
@@ -44,9 +49,11 @@ function loadSettings(): Settings {
     if (!raw) return fallback;
     const parsed = JSON.parse(raw) as Partial<Settings>;
     const mode: Mode = parsed.mode === 'ffa' ? 'ffa' : 'duel';
+    const seat: Seat = parsed.seat === 'human' ? 'human' : 'watch';
     const slots = Array.isArray(parsed.slots) ? parsed.slots.filter((id): id is string => typeof id === 'string') : [];
     return {
       mode,
+      seat,
       seed: typeof parsed.seed === 'number' && Number.isFinite(parsed.seed) ? Math.trunc(parsed.seed) : fallback.seed,
       slots: slots.length >= 4 ? slots.slice(0, 4) : fallback.slots,
       fog: Boolean(parsed.fog),
@@ -93,6 +100,16 @@ const banner = el<HTMLDivElement>('banner');
 const tooltip = el<HTMLDivElement>('tooltip');
 const stageEmpty = el<HTMLDivElement>('stage-empty');
 const playButton = el<HTMLButtonElement>('btn-play');
+const commandEl = el<HTMLDivElement>('command');
+const commandBar = el<HTMLDivElement>('command-bar');
+const orderCount = el<HTMLSpanElement>('order-count');
+const cmdHint = el<HTMLParagraphElement>('cmd-hint');
+const cmdTroopsRow = el<HTMLDivElement>('cmd-troops-row');
+const cmdTroops = el<HTMLInputElement>('cmd-troops');
+const cmdList = el<HTMLUListElement>('cmd-list');
+const cmdWarn = el<HTMLDivElement>('cmd-warn');
+const cmdSummary = el<HTMLDivElement>('cmd-summary');
+const endTurnButton = el<HTMLButtonElement>('btn-end-turn');
 
 // ---------------------------------------------------------------------------
 // 状态
@@ -104,6 +121,10 @@ let progress = 0;
 let playing = false;
 let hover: number | null = null;
 let lastTime = performance.now();
+/** 真人对局：非空表示当前这局由玩家 0 亲自下令。 */
+let live: Match | null = null;
+let plan: HumanPlan | null = null;
+let targetsCache: number[] = [];
 
 interface ScoreRow {
   row: HTMLElement;
@@ -123,6 +144,14 @@ function currentSlots(): string[] {
   return settings.slots.slice(0, slotCount());
 }
 
+function isHumanMatch(): boolean {
+  return live !== null;
+}
+
+function fogEnabled(): boolean {
+  return isHumanMatch() || settings.fog;
+}
+
 // ---------------------------------------------------------------------------
 // 设置面板
 // ---------------------------------------------------------------------------
@@ -138,6 +167,20 @@ function renderSlots(): void {
     dot.className = 'dot';
     dot.style.background = PLAYER_COLORS[index];
     dot.style.color = PLAYER_COLORS[index];
+
+    // 真人出战：1 号位固定是玩家自己，不参与 AI 选择
+    if (settings.seat === 'human' && index === 0) {
+      slot.classList.add('me');
+      const name = document.createElement('span');
+      name.className = 'slot-name';
+      name.textContent = '你';
+      const style = document.createElement('span');
+      style.className = 'slot-style';
+      style.textContent = '真人玩家 · 战争迷雾视角';
+      slot.append(dot, name, style);
+      slotsEl.append(slot);
+      continue;
+    }
 
     const select = document.createElement('select');
     select.setAttribute('aria-label', `玩家 ${index + 1} 的 AI`);
@@ -185,6 +228,17 @@ function syncSpeedButtons(): void {
   }
 }
 
+function syncSeatUi(): void {
+  for (const button of Array.from(document.querySelectorAll<HTMLButtonElement>('#seat-seg button'))) {
+    button.classList.toggle('on', button.dataset.seat === settings.seat);
+  }
+  const human = settings.seat === 'human';
+  fogInput.checked = human ? true : settings.fog;
+  fogInput.disabled = human;
+  el('fog-hint').textContent = human ? '以你的视角作战，视野外兵力未知' : '以玩家 1 的视角观战';
+  el<HTMLButtonElement>('btn-start').textContent = human ? '开始挑战' : '开始对战';
+}
+
 // ---------------------------------------------------------------------------
 // 开局
 // ---------------------------------------------------------------------------
@@ -200,31 +254,73 @@ function namesFor(ids: string[]): string[] {
   });
 }
 
-function startMatch(): void {
-  const ids = currentSlots();
-  const bots = ids.map((id) => createBot(id) ?? { name: '挂机', decide: () => [] });
-  match = runMatch({ mode: settings.mode, seed: settings.seed, botIds: ids, bots, names: namesFor(ids) });
-
+function prepareStage(): void {
   frameIndex = 0;
   progress = 0;
   hover = null;
-  logState.upto = match.frames.length > 0 ? 0 : 0;
+  logState.upto = 0;
   logState.empty = true;
   logEl.innerHTML = '';
   tooltip.hidden = true;
   stageEmpty.classList.add('hidden');
   banner.hidden = true;
 
-  scrub.max = String(Math.max(0, match.frames.length - 1));
+  scrub.max = String(Math.max(0, (match?.frames.length ?? 1) - 1));
   scrub.value = '0';
 
-  el('hud-mode').textContent = MODE_LABEL[match.mode];
+  if (!match) return;
+  el('hud-mode').textContent = isHumanMatch() ? `你 · ${MODE_LABEL[match.mode]}` : MODE_LABEL[match.mode];
   el('hud-seed').textContent = `种子 ${match.seed}`;
   el('side-seed').textContent = `种子 ${match.seed}`;
 
   buildScoreboard();
+}
+
+function startMatch(): void {
+  const ids = currentSlots();
+
+  if (settings.seat === 'human') {
+    startHumanMatch(ids);
+    return;
+  }
+
+  live = null;
+  plan = null;
+  targetsCache = [];
+  const bots = ids.map((id) => createBot(id) ?? { name: '挂机', decide: () => [] });
+  match = runMatch({ mode: settings.mode, seed: settings.seed, botIds: ids, bots, names: namesFor(ids) });
+
+  prepareStage();
   syncFrame();
   setPlaying(true);
+}
+
+/** 真人挑战：玩家 0 亲自下令，其余位置照旧是榜单 AI。 */
+function startHumanMatch(ids: string[]): void {
+  const humanBot: Bot = { name: '你', decide: () => [] };
+  const botIds = ['human', ...ids.slice(1)];
+  const bots = botIds.map((id, index) => {
+    if (index === 0) return humanBot;
+    return createBot(id) ?? { name: '挂机', decide: () => [] };
+  });
+  const names = namesFor(botIds);
+  names[0] = '你';
+
+  live = new Match({
+    mode: settings.mode,
+    seed: settings.seed,
+    botIds,
+    bots,
+    names,
+  });
+  match = live.result();
+  plan = new HumanPlan(live.state);
+  targetsCache = [];
+
+  prepareStage();
+  syncFrame();
+  setPlaying(false);
+  syncCommandUi();
 }
 
 // ---------------------------------------------------------------------------
@@ -379,6 +475,190 @@ function syncLog(rebuild: boolean): void {
 }
 
 // ---------------------------------------------------------------------------
+// 真人指挥
+// ---------------------------------------------------------------------------
+
+function nodeLabel(id: number): string {
+  if (!match) return `#${id}`;
+  const node = match.map.nodes[id];
+  return node ? `${KIND_LABEL[node.kind]} #${id}` : `#${id}`;
+}
+
+function setWarn(text: string): void {
+  cmdWarn.textContent = text;
+}
+
+function syncCommandUi(): void {
+  const human = isHumanMatch();
+  el('transport').hidden = human;
+  el('scrub-wrap').hidden = human;
+  el('turn-label').hidden = human;
+  el('speeds').hidden = human;
+  commandBar.hidden = !human;
+  commandEl.hidden = !human;
+
+  if (!human || !live || !match || !plan) {
+    endTurnButton.disabled = true;
+    return;
+  }
+
+  const current = live;
+  const frame = match.frames[frameIndex];
+  const me = frame.players[0];
+  const alive = current.state.players[0].alive;
+  const finished = current.finished;
+  const selected = plan.selected;
+
+  orderCount.textContent = `${plan.orders.length} / ${plan.maxOrders}`;
+  cmdSummary.textContent =
+    `第 ${frame.turn} 回合 · 你的节点 ${me?.nodes ?? 0} · 兵力 ${me?.troops ?? 0} · 产出 +${me?.production ?? 0}` +
+    ` · 指令 ${plan.orders.length}/${plan.maxOrders}`;
+
+  endTurnButton.disabled = finished;
+  endTurnButton.textContent = alive ? '结束回合' : '快进到结局';
+
+  cmdList.innerHTML = '';
+  if (!alive || finished) {
+    if (!alive) orderCount.textContent = '—';
+    cmdHint.textContent = alive ? '对局结束。' : '你已被淘汰，点击「快进到结局」直接看完剩余对局。';
+    cmdTroopsRow.hidden = true;
+    const item = document.createElement('li');
+    item.className = 'cmd-empty';
+    item.textContent = alive ? '本局已经结束。' : '本局已无可用指令。';
+    cmdList.append(item);
+    return;
+  }
+
+  if (selected === null) {
+    cmdHint.textContent = '点击你的节点选择出兵起点。';
+  } else {
+    const node = match.map.nodes[selected];
+    const kind = node ? KIND_LABEL[node.kind] : '节点';
+    cmdHint.textContent =
+      `起点：${kind} #${selected} · 可用 ${plan.availableAt(selected)} 兵。` +
+      '点击目标节点下令（再点起点可取消）。';
+  }
+
+  cmdTroopsRow.hidden = selected === null;
+  if (selected !== null) {
+    const available = plan.availableAt(selected);
+    const parsed = Number.parseInt(cmdTroops.value, 10);
+    if (!Number.isFinite(parsed) || parsed > available || parsed < 1) {
+      cmdTroops.value = String(Math.max(1, available));
+    }
+    cmdTroops.max = String(Math.max(1, available));
+    cmdTroops.disabled = available < 1;
+    el<HTMLButtonElement>('btn-max').disabled = available < 1;
+  }
+
+  if (plan.orders.length === 0) {
+    const item = document.createElement('li');
+    item.className = 'cmd-empty';
+    item.textContent = '本回合还没有出兵令。';
+    cmdList.append(item);
+    return;
+  }
+
+  plan.orders.forEach((order, index) => {
+    const item = document.createElement('li');
+    item.className = 'cmd-item';
+    const label = document.createElement('span');
+    label.className = 'grow';
+    label.textContent = `${nodeLabel(order.from)} → ${nodeLabel(order.to)} · ${order.troops} 兵`;
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.title = '撤销这条指令';
+    remove.textContent = '×';
+    remove.addEventListener('click', () => {
+      plan?.remove(index);
+      targetsCache = plan?.targets() ?? [];
+      setWarn('');
+      syncCommandUi();
+    });
+    item.append(label, remove);
+    cmdList.append(item);
+  });
+}
+
+function syncHumanFrame(rebuildLog = false): void {
+  if (!match || !live) return;
+  frameIndex = match.frames.length - 1;
+  progress = 0;
+  scrub.max = String(Math.max(0, match.frames.length - 1));
+  syncFrame(rebuildLog);
+}
+
+/** 提交本回合指令，与所有 AI 同时结算，生成下一帧。 */
+function endTurn(): void {
+  const current = live;
+  if (!current || !plan || !match || current.finished) return;
+
+  setWarn('');
+  const alive = current.state.players[0].alive;
+  const orders = alive ? plan.toOrders() : [];
+  current.step(new Map([[0, orders]]));
+
+  // 玩家已出局：不再需要每回合思考，一次把剩余对局推演完
+  if (!alive) {
+    let guard = 0;
+    while (!current.finished && guard < RULES.maxTurns) {
+      current.step();
+      guard++;
+    }
+  }
+
+  match = current.result();
+  plan = new HumanPlan(current.state);
+  targetsCache = [];
+  syncHumanFrame();
+  setPlaying(false);
+}
+
+function handleNodeClick(nodeId: number): void {
+  const current = live;
+  if (!current || !plan || current.finished) return;
+  if (!current.state.players[0].alive) return;
+
+  const owner = current.state.nodes[nodeId].owner;
+  if (plan.selected === null) {
+    if (owner !== plan.player) {
+      setWarn('先点你自己的节点作为起点');
+      return;
+    }
+    plan.select(nodeId);
+    targetsCache = plan.targets();
+    cmdTroops.value = String(Math.max(1, plan.availableAt(nodeId)));
+    setWarn('');
+    syncCommandUi();
+    return;
+  }
+
+  // 再点起点 = 取消选择；其他任何可达节点（包括自己的节点）都作为派兵目标
+  if (nodeId === plan.selected) {
+    plan.select(nodeId);
+    targetsCache = [];
+    setWarn('');
+    syncCommandUi();
+    return;
+  }
+
+  const fallback = plan.availableAt(plan.selected);
+  const typed = Number.parseInt(cmdTroops.value, 10);
+  const result = plan.add(nodeId, Number.isFinite(typed) ? typed : fallback);
+  if (!result.ok) {
+    setWarn(result.error ?? '无法下令');
+    return;
+  }
+
+  setWarn('');
+  if (plan.selected !== null) {
+    cmdTroops.value = String(Math.max(1, plan.availableAt(plan.selected)));
+  }
+  targetsCache = plan.targets();
+  syncCommandUi();
+}
+
+// ---------------------------------------------------------------------------
 // 帧同步与横幅
 // ---------------------------------------------------------------------------
 
@@ -389,25 +669,43 @@ function syncFrame(rebuildLog = false): void {
   const lastFrame = match.frames[match.frames.length - 1];
 
   scrub.value = String(frameIndex);
-  el('hud-turn').textContent = `第 ${frame.turn} / ${lastFrame.turn} 回合`;
+  const totalTurns = isHumanMatch() ? RULES.maxTurns : lastFrame.turn;
+  el('hud-turn').textContent = `第 ${frame.turn} / ${totalTurns} 回合`;
   el('turn-label').textContent = `回合 ${frame.turn} / ${lastFrame.turn}`;
   updateScoreboard(frame);
   syncLog(rebuildLog);
   updateBanner();
+  syncCommandUi();
 }
 
 function updateBanner(): void {
   if (!match) return;
   const lastFrame = match.frames[match.frames.length - 1];
-  const atEnd = frameIndex >= match.frames.length - 1;
+  const human = isHumanMatch();
+  const atEnd = human ? Boolean(live?.finished) : frameIndex >= match.frames.length - 1;
   if (!atEnd) {
     banner.hidden = true;
+    el('btn-replay').hidden = human;
     return;
   }
 
   const winner = match.winner;
   const title = el<HTMLDivElement>('banner-title');
-  if (winner === null) {
+  if (human) {
+    if (winner === 0) {
+      title.textContent = '你赢了';
+      title.style.color = PLAYER_COLORS[0];
+    } else if (winner === null) {
+      title.textContent = '平局';
+      title.style.color = '#e2e8f0';
+    } else if (!live?.state.players[0].alive) {
+      title.textContent = '你被淘汰';
+      title.style.color = '#fca5a5';
+    } else {
+      title.textContent = `${match.names[winner]} 获胜`;
+      title.style.color = PLAYER_COLORS[winner] ?? '#e2e8f0';
+    }
+  } else if (winner === null) {
     title.textContent = '平局';
     title.style.color = '#e2e8f0';
   } else {
@@ -415,15 +713,22 @@ function updateBanner(): void {
     title.style.color = PLAYER_COLORS[winner] ?? '#e2e8f0';
   }
 
-  const think = match.stats.reduce(
-    (sum, stat) => sum + stat.thinkMs.reduce((inner, value) => inner + value, 0),
-    0,
-  );
-  const crashes = match.stats.reduce((sum, stat) => sum + stat.crashes, 0);
-  const invalid = match.stats.reduce((sum, stat) => sum + stat.invalidOrders, 0);
-  el('banner-sub').textContent =
-    `${MODE_LABEL[match.mode]} · 种子 ${match.seed} · ${lastFrame.turn} 回合 · ` +
-    `${match.reason} · 思考 ${think.toFixed(0)}ms · 驳回 ${invalid} · 崩溃 ${crashes}`;
+  if (human) {
+    el('banner-sub').textContent =
+      `${MODE_LABEL[match.mode]} · 种子 ${match.seed} · ${lastFrame.turn} 回合 · ${match.reason}`;
+    el('btn-replay').hidden = true;
+  } else {
+    const think = match.stats.reduce(
+      (sum, stat) => sum + stat.thinkMs.reduce((inner, value) => inner + value, 0),
+      0,
+    );
+    const crashes = match.stats.reduce((sum, stat) => sum + stat.crashes, 0);
+    const invalid = match.stats.reduce((sum, stat) => sum + stat.invalidOrders, 0);
+    el('banner-sub').textContent =
+      `${MODE_LABEL[match.mode]} · 种子 ${match.seed} · ${lastFrame.turn} 回合 · ` +
+      `${match.reason} · 思考 ${think.toFixed(0)}ms · 驳回 ${invalid} · 崩溃 ${crashes}`;
+    el('btn-replay').hidden = false;
+  }
   banner.hidden = false;
 }
 
@@ -438,7 +743,7 @@ function setPlaying(value: boolean): void {
 }
 
 function togglePlay(): void {
-  if (!match) return;
+  if (!match || isHumanMatch()) return;
   if (!playing && frameIndex >= match.frames.length - 1) {
     frameIndex = 0;
     progress = 0;
@@ -448,7 +753,7 @@ function togglePlay(): void {
 }
 
 function step(delta: number): void {
-  if (!match) return;
+  if (!match || isHumanMatch()) return;
   setPlaying(false);
   frameIndex = Math.max(0, Math.min(frameIndex + delta, match.frames.length - 1));
   progress = 0;
@@ -456,7 +761,7 @@ function step(delta: number): void {
 }
 
 function jumpTo(index: number): void {
-  if (!match) return;
+  if (!match || isHumanMatch()) return;
   setPlaying(false);
   frameIndex = Math.max(0, Math.min(index, match.frames.length - 1));
   progress = 0;
@@ -470,7 +775,7 @@ function jumpTo(index: number): void {
 let visionCache = { frame: -1, vis: null as boolean[] | null, signature: '' };
 
 function visionOf(frame: Frame): boolean[] | null {
-  if (!match || !settings.fog) return null;
+  if (!match || !fogEnabled()) return null;
   const signature = `${frameIndex}:${frame.nodes.map((node) => node.owner).join(',')}`;
   if (visionCache.signature === signature && visionCache.vis) {
     visionCache.frame = frameIndex;
@@ -486,15 +791,19 @@ function visionOf(frame: Frame): boolean[] | null {
 function draw(time: number): void {
   if (!match) return;
   const frame = match.frames[frameIndex];
+  const human = isHumanMatch();
   renderer.render({
     map: match.map,
     frame,
     progress,
-    fog: settings.fog,
+    fog: fogEnabled(),
     viewpoint: 0,
     colors: PLAYER_COLORS,
     hover,
     time,
+    selected: human ? plan?.selected ?? null : null,
+    targets: human ? targetsCache : undefined,
+    plan: human ? plan?.orders : undefined,
   });
 }
 
@@ -558,14 +867,34 @@ canvas.addEventListener('mousemove', (event) => {
   const ownerName = state.owner >= 0 ? match.names[state.owner] : '中立';
   const color = state.owner >= 0 ? PLAYER_COLORS[state.owner] : '#64748b';
 
+  let action = '';
+  if (isHumanMatch() && plan && !live?.finished && live?.state.players[0].alive) {
+    if (plan.selected === node.id) {
+      action = '<div class="tt-row">已选为起点，再点一次取消</div>';
+    } else if (plan.selected === null) {
+      if (state.owner === 0) action = '<div class="tt-row">点击选择为出兵起点</div>';
+    } else if (targetsCache.includes(node.id)) {
+      action = `<div class="tt-row">点击${state.owner === 0 ? '调兵到' : '派兵到'}这里</div>`;
+    }
+  }
+
   tooltip.innerHTML =
     `<div class="tt-title"><span style="color:${color}">●</span>${KIND_LABEL[node.kind]} #${node.id}</div>` +
     `<div class="tt-row">归属：${escapeHtml(ownerName)}</div>` +
     `<div class="tt-row">兵力：${hidden ? '?' : state.troops}</div>` +
-    `<div class="tt-row">产出：${state.owner >= 0 ? `+${productionOfNode(match.frames[frameIndex], node.id)} / 回合` : '—'}</div>`;
+    `<div class="tt-row">产出：${state.owner >= 0 ? `+${productionOfNode(match.frames[frameIndex], node.id)} / 回合` : '—'}</div>` +
+    action;
   tooltip.style.left = `${x}px`;
   tooltip.style.top = `${y}px`;
   tooltip.hidden = false;
+});
+
+canvas.addEventListener('click', (event) => {
+  if (!isHumanMatch()) return;
+  const rect = canvas.getBoundingClientRect();
+  const nodeId = renderer.hitTest(event.clientX - rect.left, event.clientY - rect.top);
+  if (nodeId === null) return;
+  handleNodeClick(nodeId);
 });
 
 canvas.addEventListener('mouseleave', () => {
@@ -585,6 +914,18 @@ for (const button of Array.from(document.querySelectorAll<HTMLButtonElement>('#m
     syncModeButtons();
     renderSlots();
     saveSettings();
+  });
+}
+
+for (const button of Array.from(document.querySelectorAll<HTMLButtonElement>('#seat-seg button'))) {
+  button.addEventListener('click', () => {
+    const seat: Seat = button.dataset.seat === 'human' ? 'human' : 'watch';
+    if (settings.seat === seat) return;
+    settings.seat = seat;
+    syncSeatUi();
+    renderSlots();
+    saveSettings();
+    startMatch();
   });
 }
 
@@ -616,11 +957,33 @@ el<HTMLButtonElement>('btn-again').addEventListener('click', () => {
   startMatch();
 });
 el<HTMLButtonElement>('btn-replay').addEventListener('click', () => {
-  if (!match) return;
+  if (!match || isHumanMatch()) return;
   frameIndex = 0;
   progress = 0;
   syncFrame(true);
   setPlaying(true);
+});
+
+endTurnButton.addEventListener('click', () => endTurn());
+
+el<HTMLButtonElement>('btn-max').addEventListener('click', () => {
+  if (!plan || plan.selected === null) return;
+  cmdTroops.value = String(Math.max(1, plan.availableAt(plan.selected)));
+});
+
+el<HTMLButtonElement>('btn-clear-orders').addEventListener('click', () => {
+  plan?.clear();
+  targetsCache = plan?.targets() ?? [];
+  setWarn('');
+  syncCommandUi();
+});
+
+cmdTroops.addEventListener('change', () => {
+  if (!plan || plan.selected === null) return;
+  const available = plan.availableAt(plan.selected);
+  const parsed = Number.parseInt(cmdTroops.value, 10);
+  const value = Number.isFinite(parsed) ? Math.max(1, Math.min(available, parsed)) : Math.max(1, available);
+  cmdTroops.value = String(value);
 });
 
 el<HTMLButtonElement>('btn-first').addEventListener('click', () => jumpTo(0));
@@ -665,6 +1028,18 @@ window.addEventListener('keydown', (event) => {
   if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement) {
     return;
   }
+  if (isHumanMatch()) {
+    if (event.code === 'Enter') {
+      event.preventDefault();
+      endTurn();
+    } else if (event.code === 'Escape' && plan) {
+      plan.selected = null;
+      targetsCache = [];
+      setWarn('');
+      syncCommandUi();
+    }
+    return;
+  }
   if (event.code === 'Space') {
     event.preventDefault();
     togglePlay();
@@ -688,5 +1063,6 @@ window.addEventListener('keydown', (event) => {
 renderSlots();
 syncModeButtons();
 syncSpeedButtons();
+syncSeatUi();
 startMatch();
 requestAnimationFrame(loop);

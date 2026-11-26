@@ -109,6 +109,7 @@ export class BoardRenderer {
                 return base;
             return base * 0.86;
         };
+        const targets = new Set(input.targets ?? []);
         // ---- 连线 -------------------------------------------------------------
         for (const [a, b] of map.edges) {
             const na = map.nodes[a];
@@ -228,7 +229,34 @@ export class BoardRenderer {
                 ctx.stroke();
                 ctx.setLineDash([]);
             }
+            // 真人操作：可下令的目标与当前选中的起点
+            if (targets.has(node.id)) {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, r + 6, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(56, 189, 248, 0.35)';
+                ctx.lineWidth = 1.2;
+                ctx.setLineDash([2, 4]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+            if (input.selected === node.id) {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, r + 10, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(224, 242, 254, 0.95)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, r + 14, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)';
+                ctx.lineWidth = 1.2;
+                ctx.setLineDash([3, 6]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
         }
+        // ---- 真人待发指令 -----------------------------------------------------
+        for (const order of input.plan ?? [])
+            this.drawPlan(input, order, base);
         // ---- 攻占闪光 ---------------------------------------------------------
         for (const event of frame.events) {
             if (event.type !== 'capture')
@@ -246,6 +274,53 @@ export class BoardRenderer {
             ctx.lineWidth = 2.4 * (1 - t) + 0.6;
             ctx.stroke();
         }
+    }
+    /** 画一条「已下令、还没结算」的出兵令：虚线路径 + 终点箭头 + 兵力。 */
+    drawPlan(input, order, base) {
+        const ctx = this.ctx;
+        const path = order.path;
+        if (path.length < 2)
+            return;
+        const color = input.colors[input.viewpoint] ?? '#38bdf8';
+        const start = input.map.nodes[path[0]];
+        ctx.beginPath();
+        const first = this.toScreen(start.x, start.y);
+        ctx.moveTo(first.x, first.y);
+        for (let i = 1; i < path.length; i++) {
+            const node = input.map.nodes[path[i]];
+            const point = this.toScreen(node.x, node.y);
+            ctx.lineTo(point.x, point.y);
+        }
+        ctx.strokeStyle = rgba(color, 0.55);
+        ctx.lineWidth = 1.8;
+        ctx.setLineDash([5, 5]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        const a = input.map.nodes[path[path.length - 2]];
+        const b = input.map.nodes[path[path.length - 1]];
+        const pb = this.toScreen(b.x, b.y);
+        const dir = Math.atan2(b.y - a.y, b.x - a.x);
+        const size = Math.max(8, base * 0.38);
+        ctx.beginPath();
+        ctx.moveTo(pb.x + Math.cos(dir) * size, pb.y + Math.sin(dir) * size);
+        ctx.lineTo(pb.x + Math.cos(dir + 2.5) * size, pb.y + Math.sin(dir + 2.5) * size);
+        ctx.lineTo(pb.x + Math.cos(dir - 2.5) * size, pb.y + Math.sin(dir - 2.5) * size);
+        ctx.closePath();
+        ctx.fillStyle = rgba(color, 0.9);
+        ctx.shadowColor = rgba(color, 0.8);
+        ctx.shadowBlur = 10;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        const nx = Math.cos(dir + Math.PI / 2) * (size + 7);
+        const ny = Math.sin(dir + Math.PI / 2) * (size + 7);
+        ctx.font = `700 ${Math.round(base * 0.46)}px ${MONO}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = 'rgba(2, 6, 23, 0.92)';
+        ctx.strokeText(String(order.troops), pb.x + nx, pb.y + ny);
+        ctx.fillStyle = rgba(color, 0.95);
+        ctx.fillText(String(order.troops), pb.x + nx, pb.y + ny);
     }
     drawColumn(input, column, base) {
         const ctx = this.ctx;

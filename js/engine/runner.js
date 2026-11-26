@@ -75,8 +75,16 @@ export class Match {
             stats: this.stats,
         };
     }
-    /** 跑一个回合。返回 false 表示对局已结束。 */
-    step() {
+    /** 取某一玩家视角下的观察快照（真人玩家也用它看棋盘）。 */
+    observe(player) {
+        return observe(this.state, player);
+    }
+    /**
+     * 跑一个回合。返回 false 表示对局已结束。
+     * `overrides` 中的玩家由外部（真人）直接给出指令，不再调用其 bot，
+     * 从而可以在同一套引擎与结算规则下实现交互式对局。
+     */
+    step(overrides) {
         if (this.over)
             return false;
         const orders = [];
@@ -87,7 +95,11 @@ export class Match {
             const bot = this.bots[player.id];
             const bag = this.stats[player.id];
             let submitted = [];
-            if (bot && !this.broken[player.id]) {
+            if (overrides?.has(player.id)) {
+                submitted = overrides.get(player.id);
+                bag.thinkMs.push(0);
+            }
+            else if (bot && !this.broken[player.id]) {
                 const t0 = performance.now();
                 try {
                     const view = observe(this.state, player.id);

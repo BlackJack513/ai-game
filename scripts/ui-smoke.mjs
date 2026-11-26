@@ -2,6 +2,7 @@
 // 用法：npm run build && node scripts/ui-smoke.mjs
 import fs from 'node:fs';
 import { JSDOM, VirtualConsole } from 'jsdom';
+import { generateMap } from '../js/engine/mapgen.js';
 
 const html = fs.readFileSync('index.html', 'utf8');
 const failures = [];
@@ -179,6 +180,82 @@ check('再来一局换了种子', !text('side-seed').includes('424242'), text('s
 console.log('[8] 清空战报');
 document.getElementById('btn-clear-log').click();
 check('战报被清空', document.querySelectorAll('#log .log-item').length === 0);
+
+console.log('[9] 真人挑战');
+// 固定单挑 + 种子，保证能按地图坐标精确点到节点
+document.querySelector('#mode-seg button[data-mode="duel"]').click();
+seedInput.value = '2049';
+seedInput.dispatchEvent(new window.Event('change', { bubbles: true }));
+document.getElementById('btn-start').click();
+pump(2);
+document.querySelector('#seat-seg button[data-seat="human"]').click();
+pump(2);
+check('进入挑战模式：玩家槽位显示「你」', document.querySelector('#slots .slot.me .slot-name')?.textContent === '你');
+check('战争迷雾被强制开启', document.getElementById('fog').checked === true && document.getElementById('fog').disabled === true);
+check('指挥面板出现', document.getElementById('command').hidden === false);
+check('回放控件被隐藏', document.getElementById('transport').hidden === true && document.getElementById('scrub-wrap').hidden === true);
+check('结束回合按钮出现', document.getElementById('command-bar').hidden === false);
+check('挑战以第 0 回合开局', /第 0 \//.test(text('hud-turn')), text('hud-turn'));
+
+// 与渲染器同一套 fit 公式，把节点坐标换算成 canvas 内坐标
+function boardPoint(map, id) {
+  const width = 900;
+  const height = 700;
+  let minX = 1;
+  let minY = 1;
+  let maxX = 0;
+  let maxY = 0;
+  for (const node of map.nodes) {
+    minX = Math.min(minX, node.x);
+    minY = Math.min(minY, node.y);
+    maxX = Math.max(maxX, node.x);
+    maxY = Math.max(maxY, node.y);
+  }
+  const spanX = Math.max(0.001, maxX - minX);
+  const spanY = Math.max(0.001, maxY - minY);
+  const padX = Math.max(64, width * 0.085);
+  const padY = Math.max(64, height * 0.1);
+  const scale = Math.min((width - padX * 2) / spanX, (height - padY * 2) / spanY);
+  const ox = (width - spanX * scale) / 2 - minX * scale;
+  const oy = (height - spanY * scale) / 2 - minY * scale;
+  const node = map.nodes[id];
+  return { x: ox + node.x * scale, y: oy + node.y * scale };
+}
+
+const humanMap = generateMap('duel', 2049);
+const home = humanMap.homes[0];
+const neighbor = humanMap.adj[home][0];
+const homePoint = boardPoint(humanMap, home);
+const targetPoint = boardPoint(humanMap, neighbor);
+
+canvas.dispatchEvent(new window.MouseEvent('click', { clientX: homePoint.x, clientY: homePoint.y, bubbles: true }));
+pump(1);
+check('点击己方节点选中起点', text('cmd-hint').includes(`起点：老家 #${home}`), text('cmd-hint'));
+check('起点显示可用兵力', text('cmd-hint').includes('可用 20 兵'), text('cmd-hint'));
+
+canvas.dispatchEvent(new window.MouseEvent('click', { clientX: targetPoint.x, clientY: targetPoint.y, bubbles: true }));
+pump(1);
+check('点击目标生成一条出兵令', text('order-count') === '1 / 5', text('order-count'));
+check('指令列表出现 1 条', document.querySelectorAll('#cmd-list .cmd-item').length === 1);
+
+document.getElementById('btn-end-turn').click();
+pump(2);
+check('结束回合后推进到第 1 回合', /第 1 \//.test(text('hud-turn')), text('hud-turn'));
+check('结算后战报记录出兵/攻占', document.querySelectorAll('#log .log-item').length > 0);
+check('新回合指令清空', text('order-count') === '0 / 5', text('order-count'));
+
+document.getElementById('btn-end-turn').click();
+pump(2);
+check('真人回合可连续推进', /第 2 \//.test(text('hud-turn')), text('hud-turn'));
+
+window.dispatchEvent(new window.KeyboardEvent('keydown', { code: 'Enter', bubbles: true }));
+pump(2);
+check('回车也能结束回合', /第 3 \//.test(text('hud-turn')), text('hud-turn'));
+
+document.querySelector('#seat-seg button[data-seat="watch"]').click();
+pump(2);
+check('切回观战后隐藏指挥面板', document.getElementById('command').hidden === true);
+check('切回观战后恢复回放控件', document.getElementById('transport').hidden === false);
 
 if (consoleErrors.length > 0) failures.push(`console.error: ${consoleErrors.join(' | ')}`);
 if (failures.length > 0) {

@@ -778,6 +778,85 @@ test('Match.step 逐回合推进，结束后不再变化', () => {
   eq(match.step(), false, '结束后 step 返回 false');
 });
 
+test('Match.step 支持真人覆盖指令，其余玩家照常由 bot 决策', () => {
+  let humanCalls = 0;
+  let botCalls = 0;
+  const human: Bot = {
+    name: '你',
+    decide: () => {
+      humanCalls++;
+      return [];
+    },
+  };
+  const sparring: Bot = {
+    name: '陪练',
+    decide: () => {
+      botCalls++;
+      return [];
+    },
+  };
+  const match = new Match({
+    mode: 'duel',
+    seed: 8,
+    botIds: ['human', 'idle'],
+    bots: [human, sparring],
+    names: ['你', '陪练'],
+  });
+
+  const home = match.state.map.homes[0];
+  const target = match.state.map.adj[home].find((id) => match.state.nodes[id].owner === NEUTRAL);
+  assert(target !== undefined, '老家旁边应有中立节点');
+  const before = match.state.nodes[home].troops;
+
+  eq(match.step(new Map([[0, [{ from: home, to: target, troops: 5 }]]])), true, '对局应继续');
+  eq(humanCalls, 0, '被覆盖的玩家不应调用 bot');
+  eq(botCalls, 1, '其余玩家照常调用 bot');
+
+  const frame = match.frames[1];
+  eq(frame.orders[0].orders.length, 1, '真人指令进入结算');
+  eq(frame.orders[0].orders[0].troops, 5, '结算的兵力');
+  eq(frame.nodes[home].troops, before - 5 + RULES.homeProduction, '老家扣兵后正常产出');
+});
+
+test('真人指令驱动的完整对局能跑到结束', () => {
+  const human: Bot = {
+    name: '你',
+    decide: () => {
+      throw new Error('真人玩家不应被调用');
+    },
+  };
+  const idle: Bot = { name: '挂机', decide: () => [] };
+  const match = new Match({
+    mode: 'duel',
+    seed: 12,
+    botIds: ['human', 'idle'],
+    bots: [human, idle],
+    maxTurns: 10,
+  });
+
+  let guard = 0;
+  while (!match.finished && guard < 20) {
+    const view = match.observe(0);
+    const source = view.nodes.find(
+      (node) =>
+        node.owner === 0 &&
+        (node.troops ?? 0) > 1 &&
+        view.adj[node.id].some((id) => view.nodes[id].owner === NEUTRAL),
+    );
+    const target =
+      source && view.adj[source.id].map((id) => view.nodes[id]).find((node) => node.owner === NEUTRAL);
+    const orders =
+      source && target ? [{ from: source.id, to: target.id, troops: (source.troops ?? 1) - 1 }] : [];
+    match.step(new Map([[0, orders]]));
+    guard++;
+  }
+
+  assert(match.finished, '对局应在回合上限结束');
+  eq(match.frames.length, 11, '初始帧 + 10 回合');
+  eq(match.stats[0].thinkMs.length, 10, '真人指令每回合都生效');
+  eq(match.stats[0].crashes, 0, '真人玩家不会被当作 bot 调用');
+});
+
 test('四人混战必然产生冠军或明确的结束原因', () => {
   const result = runMatch({
     mode: 'ffa',
