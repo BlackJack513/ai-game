@@ -7,7 +7,15 @@
  */
 import { BOTS } from './index.js';
 /** 明确只打单挑、不参加四人混战的 bot。 */
-export const DUEL_ONLY_BOT_IDS = ['chengying', 'poyun', 'suanli', 'dafeiyu'];
+export const DUEL_ONLY_BOT_IDS = [
+    'chengying',
+    'poyun',
+    'suanli',
+    'dafeiyu',
+    'kaige-wuji',
+    'kaige-astra',
+    'kaige-astra1',
+];
 const duelOnly = new Set(DUEL_ONLY_BOT_IDS);
 /** 单挑专用 bot 的完整登记信息，供脚本打印名单。 */
 export const DUEL_ONLY_BOTS = BOTS.filter((entry) => duelOnly.has(entry.id));

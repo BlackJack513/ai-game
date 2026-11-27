@@ -1,7 +1,8 @@
 /**
- * 单挑打榜：只邀请当前排行榜前十名与 1 位榜外挑战者（共 11 位），两两各打 1000 场。
+ * 单挑打榜：邀请当前排行榜前十名与榜外挑战者，两两各打 1000 场。
  *
  *   npm run ladder -- --bot=<id>         # 前十 + 1 位挑战者，共 11 位（每对 1000 场）
+ *   npm run ladder -- --bot=<id1>,<id2>  # 前十 + 多位挑战者，一起重排前十
  *   npm run ladder                       # 只复核当前前十名（10 位）
  *   npm run ladder -- --all              # 全部内置 bot（调试用，不用于打榜）
  *   node scripts/ladder.mjs --games=20   # 每对 20 场
@@ -86,7 +87,6 @@ if (runAll) {
   if (new Set(challengers.map((bot) => bot.id)).size !== challengers.length) {
     fail('--bot 里有重复的选手');
   }
-  if (challengers.length > 1) fail('打榜只邀请 1 位榜外挑战者');
   participants = [...topBots, ...challengers];
 }
 

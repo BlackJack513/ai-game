@@ -3,6 +3,7 @@
  * 不必等全量循环赛（全员两两对战）跑完。
  *
  *   npm run challenge -- --bot=chengying     # 1 位榜外 bot 挑战前十（共 11 位，每对 1000 场）
+ *   npm run challenge -- --bot=a,b,c         # 多位榜外 bot 一起挑战前十
  *   npm run challenge -- --games=100         # 每个对阵的场数（默认 1000）
  *   npm run challenge -- --top=10            # 榜单取前 N 名（默认 10）
  *   npm run challenge -- --json=work/challenge.json
@@ -107,14 +108,6 @@ if (new Set(challengers.map((bot) => bot.id)).size !== challengers.length) {
   console.error('--bot 里有重复的选手');
   process.exit(1);
 }
-if (challengers.length > 1) {
-  fail(
-    `打榜只邀请 1 位榜外挑战者，当前榜外有 ${challengers.length} 位（${challengers
-      .map((bot) => bot.id)
-      .join(', ')}），请用 --bot=<id> 指定`,
-  );
-}
-
 /** 轮转编排：奇数人数补一个轮空位，每轮每人最多出场一次，任意两人恰好相遇一次。 */
 function scheduleRounds(ids) {
   const list = ids.slice();

@@ -28,6 +28,9 @@ import { createHy4BlitzFfa } from './hy4blitz-ffa.js';
 import { createPoyun } from './poyun.js';
 import { createSuanli } from './suanli.js';
 import { createDafeiyu } from './dafeiyu.js';
+import { createZhanluOmega } from './kaige-wuji.js';
+import { createAstra } from './kaige-astra.js';
+import { createAstra1 } from './kaige-astra1.js';
 export const BOTS = [
     {
         id: 'tide',
@@ -210,6 +213,27 @@ export const BOTS = [
         style: '家门口抢产 · 余粮前置 · 见空即斩',
         color: '#0891b2',
         create: createDafeiyu,
+    },
+    {
+        id: 'kaige-wuji',
+        name: '凯哥无极',
+        style: '全盘推演 · 收益排序 · 同步合击',
+        color: '#8b5cf6',
+        create: createZhanluOmega,
+    },
+    {
+        id: 'kaige-astra',
+        name: '凯哥astra',
+        style: '按占领收益分兵 · 以前沿兵站压缩增援距离',
+        color: '#0d9488',
+        create: createAstra,
+    },
+    {
+        id: 'kaige-astra1',
+        name: '凯哥astra1',
+        style: '分兵试探 · 精确留守 · 前沿集结',
+        color: '#ea580c',
+        create: createAstra1,
     },
 ];
 export function createBot(id) {
