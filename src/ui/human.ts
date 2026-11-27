@@ -33,14 +33,12 @@ export interface PlanResult {
 }
 
 export class HumanPlan {
-  /** 玩家编号：真人固定坐 0 号位。 */
-  readonly player = 0;
-
   selected: number | null = null;
   pending: PendingOrder | null = null;
   orders: PlannedOrder[] = [];
 
-  constructor(private readonly state: GameState) {}
+  /** `player` 为真人座位：本地挑战固定 0，联机时由房间分配。 */
+  constructor(private readonly state: GameState, readonly player = 0) {}
 
   get maxOrders(): number {
     return RULES.maxOrders;

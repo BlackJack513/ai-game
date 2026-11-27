@@ -40,32 +40,52 @@
             <div class="seg" id="seat-seg">
               <button type="button" data-seat="watch" class="on">AI 观战</button>
               <button type="button" data-seat="human">我来挑战</button>
+              <button type="button" data-seat="online">联机单挑</button>
             </div>
           </div>
 
-          <div class="field">
-            <label class="field-label" for="seed">地图种子</label>
-            <div class="seed-row">
-              <input id="seed" type="text" inputmode="numeric" spellcheck="false" autocomplete="off" />
-              <button type="button" class="btn icon-btn" id="btn-dice" title="随机种子">🎲</button>
+          <div id="local-settings">
+            <div class="field">
+              <label class="field-label" for="seed">地图种子</label>
+              <div class="seed-row">
+                <input id="seed" type="text" inputmode="numeric" spellcheck="false" autocomplete="off" />
+                <button type="button" class="btn icon-btn" id="btn-dice" title="随机种子">🎲</button>
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="field-label">参赛 AI</label>
+              <div class="slots" id="slots"></div>
+            </div>
+
+            <div class="field">
+              <label class="check" for="fog">
+                <input type="checkbox" id="fog" />
+                <span class="check-box"></span>
+                <span>战争迷雾 <em id="fog-hint">以玩家 1 的视角观战</em></span>
+              </label>
             </div>
           </div>
 
-          <div class="field">
-            <label class="field-label">参赛 AI</label>
-            <div class="slots" id="slots"></div>
-          </div>
-
-          <div class="field">
-            <label class="check" for="fog">
-              <input type="checkbox" id="fog" />
-              <span class="check-box"></span>
-              <span>战争迷雾 <em id="fog-hint">以玩家 1 的视角观战</em></span>
-            </label>
+          <div class="field" id="online-panel" hidden>
+            <label class="field-label" for="room-key">房间密钥</label>
+            <div class="room-row">
+              <input id="room-key" type="text" maxlength="16" spellcheck="false" autocomplete="off" placeholder="例如 STAR7" />
+              <button type="button" class="btn icon-btn" id="btn-room-random" title="随机密钥">🎲</button>
+            </div>
+            <label class="field-label" for="player-name">你的昵称</label>
+            <input id="player-name" class="room-input" type="text" maxlength="16" spellcheck="false" autocomplete="off" placeholder="玩家" />
+            <div class="room-actions">
+              <button type="button" class="btn primary" id="btn-room-connect">建房 / 加入</button>
+              <button type="button" class="btn ghost" id="btn-room-leave">离开</button>
+            </div>
+            <button type="button" class="btn ghost small" id="btn-room-restart" hidden>再来一局（双方通用）</button>
+            <div class="room-status" id="room-status" role="status">输入密钥建房，把同一个密钥发给朋友即可加入。</div>
+            <p class="hint">联机固定单挑：地图由密钥决定，双方同时下令，服务端统一结算。</p>
           </div>
 
           <button class="btn primary start" id="btn-start">开始对战</button>
-          <p class="hint">同一份「种子 + AI 阵容 + 指令」永远得到同一局比赛。</p>
+          <p class="hint" id="local-hint">同一份「种子 + AI 阵容 + 指令」永远得到同一局比赛。</p>
 
           <div class="rules-card">
             <h3>四条规则，看懂全局</h3>
@@ -97,7 +117,7 @@
           <div class="stage-empty" id="stage-empty">
             <div class="empty-mark">✦</div>
             <p>选择模式与 AI，点击「开始对战」</p>
-            <p class="muted">选择「我来挑战」即可亲自上阵，点击棋盘下令</p>
+            <p class="muted">选择「我来挑战」亲自上阵，或「联机单挑」与朋友用同一个密钥对战</p>
           </div>
         </section>
 
@@ -188,6 +208,8 @@
         <p>150 回合仍未分出胜负时：先比节点数，再比总兵力，仍相同则判和。所以龟缩拖延并不划算。</p>
         <h3>亲自出战</h3>
         <p>在「对战方式」里选「我来挑战」：你坐 1 号位，以战争迷雾视角对抗榜单 AI。点击你的节点作为起点，再点目标节点，输入兵力后按回车确认，一条指令就下好了；每条确认后起点自动清空，直接点下一个起点即可，最多 5 条，也能在右侧列表逐条撤销。想好后点击底部「结束回合」，AI 会在同一时刻下令并一起结算。</p>
+        <h3>和朋友联机单挑</h3>
+        <p>在「对战方式」里选「联机单挑」：一人建房、一人输入相同密钥加入。双方各坐一个席位，以战争迷雾视角同时下令；每回合最多 5 条，提交后等待对方，服务端统一结算后同步双方棋盘。单回合 120 秒未提交按空指令推进，对手中途离开也会自动跳过其指令。终局后任意一方点「再来一局」即可换地图重开。</p>
         <h3>写一个 bot</h3>
         <p>实现 <code>Bot</code> 接口的 <code>decide(view: Observation): Order[]</code> 即可，所有信息都来自 <code>view</code>，引擎保证确定性。详见仓库 README。</p>
       </div>

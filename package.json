@@ -8,6 +8,7 @@
     "build": "node scripts/build.mjs",
     "watch": "node scripts/dev.mjs",
     "serve": "node scripts/serve.mjs",
+    "serve:online": "node server.mjs",
     "check": "tsc -p tsconfig.json",
     "test": "node scripts/build.mjs --test && node .test-build/scripts/selftest.js",
     "smoke": "node scripts/build.mjs && node scripts/ui-smoke.mjs",

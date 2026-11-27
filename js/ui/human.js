@@ -12,13 +12,14 @@ import { findPath } from '../engine/sim.js';
 import { RULES } from '../engine/types.js';
 export class HumanPlan {
     state;
-    /** 玩家编号：真人固定坐 0 号位。 */
-    player = 0;
+    player;
     selected = null;
     pending = null;
     orders = [];
-    constructor(state) {
+    /** `player` 为真人座位：本地挑战固定 0，联机时由房间分配。 */
+    constructor(state, player = 0) {
         this.state = state;
+        this.player = player;
     }
     get maxOrders() {
         return RULES.maxOrders;

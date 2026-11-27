@@ -4,6 +4,29 @@ import fs from 'node:fs';
 import { JSDOM, VirtualConsole } from 'jsdom';
 import { generateMap } from '../js/engine/mapgen.js';
 
+// 联机测试用的最小事件源 / 请求桩
+class MockEventSource {
+  static last = null;
+  constructor(url) {
+    this.url = url;
+    this.listeners = {};
+    this.closed = false;
+    MockEventSource.last = this;
+  }
+  addEventListener(type, fn) {
+    (this.listeners[type] ??= []).push(fn);
+  }
+  close() {
+    this.closed = true;
+  }
+  emit(type, data) {
+    for (const fn of this.listeners[type] ?? []) fn({ data: JSON.stringify(data) });
+  }
+}
+const fetchCalls = [];
+let nextFetchResponse = { ok: true, waitingFor: [0] };
+const sleepForMicrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 const html = fs.readFileSync('index.html', 'utf8');
 const failures = [];
 const consoleErrors = [];
@@ -53,11 +76,18 @@ window.HTMLCanvasElement.prototype.getBoundingClientRect = () => ({
 globalThis.window = window;
 globalThis.document = document;
 globalThis.localStorage = window.localStorage;
+globalThis.sessionStorage = window.sessionStorage;
 globalThis.HTMLInputElement = window.HTMLInputElement;
 globalThis.HTMLSelectElement = window.HTMLSelectElement;
 globalThis.HTMLTextAreaElement = window.HTMLTextAreaElement;
 globalThis.HTMLCanvasElement = window.HTMLCanvasElement;
 globalThis.MouseEvent = window.MouseEvent;
+globalThis.EventSource = MockEventSource;
+window.EventSource = MockEventSource;
+globalThis.fetch = async (url, options) => {
+  fetchCalls.push({ url: String(url), body: options?.body ? JSON.parse(options.body) : null });
+  return { ok: true, status: 200, json: async () => nextFetchResponse };
+};
 
 let rafCallback = null;
 globalThis.requestAnimationFrame = (cb) => {
@@ -271,6 +301,63 @@ document.querySelector('#seat-seg button[data-seat="watch"]').click();
 pump(2);
 check('切回观战后隐藏指挥面板', document.getElementById('command').hidden === true);
 check('切回观战后恢复回放控件', document.getElementById('transport').hidden === false);
+
+console.log('[10] 联机单挑');
+document.querySelector('#seat-seg button[data-seat="online"]').click();
+pump(1);
+check('联机面板出现且本地设置隐藏', document.getElementById('online-panel').hidden === false && document.getElementById('local-settings').hidden === true);
+check('联机时四人混战被禁用', document.querySelector('#mode-seg button[data-mode="ffa"]').disabled === true);
+
+document.getElementById('room-key').value = 'TEST77';
+document.getElementById('player-name').value = '小明';
+document.getElementById('btn-room-connect').click();
+await sleepForMicrotask();
+const stream = MockEventSource.last;
+check('SSE 连接带上房间密钥', Boolean(stream && !stream.closed && stream.url.includes('key=TEST77')), stream?.url);
+
+const { Match } = await import(new URL('../js/engine/runner.js', import.meta.url).href);
+const onlineResult = new Match({
+  mode: 'duel',
+  seed: 2049,
+  botIds: ['human', 'human'],
+  bots: [{ name: '甲', decide: () => [] }, { name: '小明', decide: () => [] }],
+  names: ['甲', '小明'],
+}).result();
+stream.emit('hello', { key: 'TEST77', seat: 1, token: 'tok123', name: '小明', seed: 2049 });
+stream.emit('state', {
+  key: 'TEST77',
+  seed: 2049,
+  phase: 'playing',
+  finished: false,
+  waitingFor: [0, 1],
+  result: onlineResult,
+});
+pump(2);
+check('联机 HUD 显示联机', text('hud-mode').includes('联机'), text('hud-mode'));
+check('联机计分板显示两位玩家', document.querySelectorAll('#score .prow').length === 2);
+check('联机指挥面板出现', document.getElementById('command').hidden === false, `hidden=${document.getElementById('command').hidden}`);
+
+const myHome = onlineResult.map.homes[1];
+const myTarget = onlineResult.map.adj[myHome][0];
+const myHomePoint = boardPoint(onlineResult.map, myHome);
+const myTargetPoint = boardPoint(onlineResult.map, myTarget);
+canvas.dispatchEvent(new window.MouseEvent('click', { clientX: myHomePoint.x, clientY: myHomePoint.y, bubbles: true }));
+pump(1);
+check('联机以分配的 1 号席位为视角', text('cmd-hint').includes(`起点：老家 #${myHome}`), text('cmd-hint'));
+canvas.dispatchEvent(new window.MouseEvent('click', { clientX: myTargetPoint.x, clientY: myTargetPoint.y, bubbles: true }));
+pump(1);
+document.getElementById('cmd-troops').value = '7';
+document.getElementById('btn-confirm-order').click();
+pump(1);
+check('联机可生成一条指令', text('order-count') === '1 / 5', text('order-count'));
+
+document.getElementById('btn-end-turn').click();
+await sleepForMicrotask();
+check('联机指令发给服务端', fetchCalls.some((call) => call.url.includes('/api/room/order') && call.body.token === 'tok123' && call.body.orders[0].troops === 7), JSON.stringify(fetchCalls.at(-1)));
+check('提交后按钮进入等待状态', text('btn-end-turn') === '已提交，等待对手', text('btn-end-turn'));
+
+document.getElementById('btn-room-leave').click();
+check('离开房间会关闭连接', stream.closed === true);
 
 if (consoleErrors.length > 0) failures.push(`console.error: ${consoleErrors.join(' | ')}`);
 if (failures.length > 0) {

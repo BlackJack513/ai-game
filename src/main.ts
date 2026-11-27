@@ -8,7 +8,17 @@
 import { BOTS, botEntry, createBot } from './bots/index.js';
 import { Match, runMatch, type Frame, type MatchResult } from './engine/runner.js';
 import { computeVision, productionForKind } from './engine/sim.js';
-import { KIND_LABEL, MODE_LABEL, RULES, type Bot, type GameEvent, type Mode, type NodeKind } from './engine/types.js';
+import {
+  KIND_LABEL,
+  MODE_LABEL,
+  RULES,
+  type Bot,
+  type GameEvent,
+  type GameState,
+  type Mode,
+  type NodeKind,
+  type Order,
+} from './engine/types.js';
 import { HumanPlan } from './ui/human.js';
 import { BoardRenderer } from './ui/render.js';
 
@@ -18,7 +28,7 @@ const PLAYER_COLORS = ['#38bdf8', '#fb7185', '#fbbf24', '#a78bfa'];
 const BASE_TURN_MS = 900;
 const SPEEDS = [0.5, 1, 2, 4];
 
-type Seat = 'watch' | 'human';
+type Seat = 'watch' | 'human' | 'online';
 
 interface Settings {
   mode: Mode;
@@ -49,7 +59,7 @@ function loadSettings(): Settings {
     if (!raw) return fallback;
     const parsed = JSON.parse(raw) as Partial<Settings>;
     const mode: Mode = parsed.mode === 'ffa' ? 'ffa' : 'duel';
-    const seat: Seat = parsed.seat === 'human' ? 'human' : 'watch';
+    const seat: Seat = parsed.seat === 'human' ? 'human' : parsed.seat === 'online' ? 'online' : 'watch';
     const slots = Array.isArray(parsed.slots) ? parsed.slots.filter((id): id is string => typeof id === 'string') : [];
     return {
       mode,
@@ -111,6 +121,10 @@ const cmdList = el<HTMLUListElement>('cmd-list');
 const cmdWarn = el<HTMLDivElement>('cmd-warn');
 const cmdSummary = el<HTMLDivElement>('cmd-summary');
 const endTurnButton = el<HTMLButtonElement>('btn-end-turn');
+const roomKeyInput = el<HTMLInputElement>('room-key');
+const roomNameInput = el<HTMLInputElement>('player-name');
+const roomStatusEl = el<HTMLDivElement>('room-status');
+const roomRestartButton = el<HTMLButtonElement>('btn-room-restart');
 
 // ---------------------------------------------------------------------------
 // 状态
@@ -126,6 +140,22 @@ let lastTime = performance.now();
 let live: Match | null = null;
 let plan: HumanPlan | null = null;
 let targetsCache: number[] = [];
+
+/** 联机会话：服务端推送的完整对局结果 + 本人在房间中的席位。 */
+interface OnlineSession {
+  key: string;
+  token: string;
+  seat: number;
+  name: string;
+  source: EventSource;
+  result: MatchResult | null;
+  state: GameState | null;
+  finished: boolean;
+  waitingFor: number[];
+}
+let online: OnlineSession | null = null;
+/** 当前玩家 seat：本地挑战恒为 0，联机由服务端分配。 */
+let localSeat = 0;
 
 interface ScoreRow {
   row: HTMLElement;
@@ -145,12 +175,52 @@ function currentSlots(): string[] {
   return settings.slots.slice(0, slotCount());
 }
 
+/** 是否需要交互式指挥 UI（本地真人对局或联机对局）。 */
 function isHumanMatch(): boolean {
-  return live !== null;
+  return live !== null || online !== null;
 }
 
 function fogEnabled(): boolean {
   return isHumanMatch() || settings.fog;
+}
+
+/** 当前可下令的局面：联机取服务端快照，本地取引擎实例。 */
+function currentState(): GameState | null {
+  return online ? online.state : (live?.state ?? null);
+}
+
+function meAlive(): boolean {
+  return currentState()?.players[localSeat]?.alive === true;
+}
+
+function matchFinished(): boolean {
+  return online ? online.finished : live !== null && live.finished;
+}
+
+/** 从服务端快照重建一个只包含下令所需字段的局面（不参与结算）。 */
+function stateFromResult(result: MatchResult | null): GameState | null {
+  if (!result) return null;
+  const frame = result.frames[result.frames.length - 1];
+  return {
+    map: result.map,
+    turn: frame.turn,
+    nodes: frame.nodes.map((node) => ({ owner: node.owner, troops: node.troops })),
+    columns: frame.columns.map((column, index) => ({
+      id: index + 1,
+      owner: column.owner,
+      troops: column.troops,
+      path: column.path.slice(),
+      departTurn: column.departTurn,
+      arriveTurn: column.arriveTurn,
+    })),
+    players: frame.players.map((player) => ({
+      id: player.id,
+      name: player.name,
+      alive: player.alive,
+      eliminatedTurn: player.eliminatedTurn,
+    })),
+    nextColumnId: frame.columns.length + 1,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -234,10 +304,23 @@ function syncSeatUi(): void {
     button.classList.toggle('on', button.dataset.seat === settings.seat);
   }
   const human = settings.seat === 'human';
-  fogInput.checked = human ? true : settings.fog;
-  fogInput.disabled = human;
-  el('fog-hint').textContent = human ? '以你的视角作战，视野外兵力未知' : '以玩家 1 的视角观战';
+  const net = settings.seat === 'online';
+  fogInput.checked = human || net ? true : settings.fog;
+  fogInput.disabled = human || net;
+  el('fog-hint').textContent = human
+    ? '以你的视角作战，视野外兵力未知'
+    : net
+      ? '联机对局强制以你的视角作战'
+      : '以玩家 1 的视角观战';
+
+  el('local-settings').hidden = net;
+  el('online-panel').hidden = !net;
+  el('local-hint').hidden = net;
+  el<HTMLButtonElement>('btn-start').hidden = net;
   el<HTMLButtonElement>('btn-start').textContent = human ? '开始挑战' : '开始对战';
+  for (const button of Array.from(document.querySelectorAll<HTMLButtonElement>('#mode-seg button'))) {
+    button.disabled = net && button.dataset.mode === 'ffa';
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -270,7 +353,11 @@ function prepareStage(): void {
   scrub.value = '0';
 
   if (!match) return;
-  el('hud-mode').textContent = isHumanMatch() ? `你 · ${MODE_LABEL[match.mode]}` : MODE_LABEL[match.mode];
+  el('hud-mode').textContent = online
+    ? `联机 · ${MODE_LABEL[match.mode]}`
+    : isHumanMatch()
+      ? `你 · ${MODE_LABEL[match.mode]}`
+      : MODE_LABEL[match.mode];
   el('hud-seed').textContent = `种子 ${match.seed}`;
   el('side-seed').textContent = `种子 ${match.seed}`;
 
@@ -278,7 +365,9 @@ function prepareStage(): void {
 }
 
 function startMatch(): void {
+  if (settings.seat === 'online') return;
   const ids = currentSlots();
+  localSeat = 0;
 
   if (settings.seat === 'human') {
     startHumanMatch(ids);
@@ -498,35 +587,60 @@ function syncCommandUi(): void {
   commandBar.hidden = !human;
   commandEl.hidden = !human;
 
-  if (!human || !live || !match || !plan) {
+  const state = currentState();
+  if (!human || !state || !match || !plan) {
     endTurnButton.disabled = true;
     return;
   }
 
-  const current = live;
   const frame = match.frames[frameIndex];
-  const me = frame.players[0];
-  const alive = current.state.players[0].alive;
-  const finished = current.finished;
+  const me = frame.players[localSeat];
+  const alive = meAlive();
+  const finished = matchFinished();
+  const submitted = online !== null && !online.waitingFor.includes(localSeat);
   const selected = plan.selected;
   const pending = plan.pending;
 
   orderCount.textContent = `${plan.orders.length} / ${plan.maxOrders}`;
-  cmdSummary.textContent =
+  let summary =
     `第 ${frame.turn} 回合 · 你的节点 ${me?.nodes ?? 0} · 兵力 ${me?.troops ?? 0} · 产出 +${me?.production ?? 0}` +
     ` · 指令 ${plan.orders.length}/${plan.maxOrders}`;
+  if (online) {
+    const names = match.names;
+    const waitingNames = online.waitingFor.map((seat) => names[seat] ?? `玩家 ${seat + 1}`);
+    summary += waitingNames.length ? ` · 等待 ${waitingNames.join('、')}` : ' · 双方已下令';
+  }
+  cmdSummary.textContent = summary;
 
-  endTurnButton.disabled = finished;
-  endTurnButton.textContent = alive ? '结束回合' : '快进到结局';
+  endTurnButton.disabled = online ? !alive || submitted || finished : finished;
+  endTurnButton.textContent = submitted
+    ? '已提交，等待对手'
+    : !alive
+      ? online
+        ? '等待对局结束'
+        : '快进到结局'
+      : online
+        ? '提交本回合'
+        : '结束回合';
 
   cmdList.innerHTML = '';
-  if (!alive || finished) {
-    if (!alive) orderCount.textContent = '—';
-    cmdHint.textContent = alive ? '对局结束。' : '你已被淘汰，点击「快进到结局」直接看完剩余对局。';
+  if (!alive || finished || submitted) {
+    if (!alive || finished) orderCount.textContent = '—';
+    cmdHint.textContent = finished
+      ? '对局结束。'
+      : !alive
+        ? online
+          ? '你已被淘汰，等待对局结束。'
+          : '你已被淘汰，点击「快进到结局」直接看完剩余对局。'
+        : '本回合指令已提交，等待对手下令。';
     cmdTroopsRow.hidden = true;
     const item = document.createElement('li');
     item.className = 'cmd-empty';
-    item.textContent = alive ? '本局已经结束。' : '本局已无可用指令。';
+    item.textContent = finished
+      ? '本局已经结束。'
+      : !alive
+        ? '本局已无可用指令。'
+        : '本回合指令已提交。';
     cmdList.append(item);
     return;
   }
@@ -589,17 +703,17 @@ function syncCommandUi(): void {
 }
 
 function syncHumanFrame(rebuildLog = false): void {
-  if (!match || !live) return;
+  if (!match || (!live && !online)) return;
   frameIndex = match.frames.length - 1;
   progress = 0;
   scrub.max = String(Math.max(0, match.frames.length - 1));
   syncFrame(rebuildLog);
 }
 
-/** 提交本回合指令，与所有 AI 同时结算，生成下一帧。 */
+/** 提交本回合指令：联机发给服务端，本地与 AI 同时结算。 */
 function endTurn(): void {
-  const current = live;
-  if (!current || !plan || !match || current.finished) return;
+  if (!plan || !match || matchFinished()) return;
+  if (online && !online.waitingFor.includes(localSeat)) return;
 
   // 已选好起终点、还没来得及按回车的指令，按输入框当前兵力一并提交
   if (plan.pending) {
@@ -614,9 +728,19 @@ function endTurn(): void {
   }
 
   setWarn('');
-  const alive = current.state.players[0].alive;
-  const orders = alive ? plan.toOrders() : [];
-  current.step(new Map([[0, orders]]));
+  const alive = meAlive();
+  const orders: Order[] = alive ? plan.toOrders() : [];
+
+  if (online) {
+    void submitOrders(orders);
+    targetsCache = [];
+    syncCommandUi();
+    return;
+  }
+
+  const current = live;
+  if (!current) return;
+  current.step(new Map([[localSeat, orders]]));
 
   // 玩家已出局：不再需要每回合思考，一次把剩余对局推演完
   if (!alive) {
@@ -628,7 +752,7 @@ function endTurn(): void {
   }
 
   match = current.result();
-  plan = new HumanPlan(current.state);
+  plan = new HumanPlan(current.state, localSeat);
   targetsCache = [];
   syncHumanFrame();
   setPlaying(false);
@@ -668,11 +792,12 @@ function cancelSelection(): void {
 }
 
 function handleNodeClick(nodeId: number): void {
-  const current = live;
-  if (!current || !plan || current.finished) return;
-  if (!current.state.players[0].alive) return;
+  const state = currentState();
+  if (!state || !plan || matchFinished()) return;
+  if (!meAlive()) return;
+  if (online && !online.waitingFor.includes(localSeat)) return;
 
-  const owner = current.state.nodes[nodeId].owner;
+  const owner = state.nodes[nodeId].owner;
 
   // 正在输入兵力：点起点取消整条指令，点其他节点则改换目标
   if (plan.pending) {
@@ -739,7 +864,7 @@ function updateBanner(): void {
   if (!match) return;
   const lastFrame = match.frames[match.frames.length - 1];
   const human = isHumanMatch();
-  const atEnd = human ? Boolean(live?.finished) : frameIndex >= match.frames.length - 1;
+  const atEnd = human ? matchFinished() : frameIndex >= match.frames.length - 1;
   if (!atEnd) {
     banner.hidden = true;
     el('btn-replay').hidden = human;
@@ -749,13 +874,13 @@ function updateBanner(): void {
   const winner = match.winner;
   const title = el<HTMLDivElement>('banner-title');
   if (human) {
-    if (winner === 0) {
+    if (winner === localSeat) {
       title.textContent = '你赢了';
-      title.style.color = PLAYER_COLORS[0];
+      title.style.color = PLAYER_COLORS[localSeat];
     } else if (winner === null) {
       title.textContent = '平局';
       title.style.color = '#e2e8f0';
-    } else if (!live?.state.players[0].alive) {
+    } else if (!currentState()?.players[localSeat]?.alive) {
       title.textContent = '你被淘汰';
       title.style.color = '#fca5a5';
     } else {
@@ -833,14 +958,14 @@ let visionCache = { frame: -1, vis: null as boolean[] | null, signature: '' };
 
 function visionOf(frame: Frame): boolean[] | null {
   if (!match || !fogEnabled()) return null;
-  const signature = `${frameIndex}:${frame.nodes.map((node) => node.owner).join(',')}`;
+  const signature = `${localSeat}:${frameIndex}:${frame.nodes.map((node) => node.owner).join(',')}`;
   if (visionCache.signature === signature && visionCache.vis) {
     visionCache.frame = frameIndex;
     return visionCache.vis;
   }
   const owners = frame.nodes.map((node) => node.owner);
   const kinds = match.map.nodes.map((node) => node.kind);
-  const vis = computeVision(kinds, owners, match.map.adj, 0);
+  const vis = computeVision(kinds, owners, match.map.adj, localSeat);
   visionCache = { frame: frameIndex, vis, signature };
   return vis;
 }
@@ -854,7 +979,7 @@ function draw(time: number): void {
     frame,
     progress,
     fog: fogEnabled(),
-    viewpoint: 0,
+    viewpoint: localSeat,
     colors: PLAYER_COLORS,
     hover,
     time,
@@ -922,12 +1047,12 @@ canvas.addEventListener('mousemove', (event) => {
   const node = match.map.nodes[hover];
   const state = match.frames[frameIndex].nodes[hover];
   const vis = visionOf(match.frames[frameIndex]);
-  const hidden = Boolean(vis && state.owner >= 0 && state.owner !== 0 && !vis[hover]);
+  const hidden = Boolean(vis && state.owner >= 0 && state.owner !== localSeat && !vis[hover]);
   const ownerName = state.owner >= 0 ? match.names[state.owner] : '中立';
   const color = state.owner >= 0 ? PLAYER_COLORS[state.owner] : '#64748b';
 
   let action = '';
-  if (isHumanMatch() && plan && !live?.finished && live?.state.players[0].alive) {
+  if (isHumanMatch() && plan && !matchFinished() && meAlive()) {
     if (plan.pending?.to === node.id) {
       action = '<div class="tt-row">已选为出兵终点，输入兵力后确认</div>';
     } else if (plan.pending?.from === node.id) {
@@ -935,11 +1060,11 @@ canvas.addEventListener('mousemove', (event) => {
     } else if (plan.selected === node.id) {
       action = '<div class="tt-row">已选为起点，再点一次取消</div>';
     } else if (plan.selected === null) {
-      if (state.owner === 0) action = '<div class="tt-row">点击选择为出兵起点</div>';
+      if (state.owner === localSeat) action = '<div class="tt-row">点击选择为出兵起点</div>';
     } else if (plan.pending) {
       action = '<div class="tt-row">点击改选出兵终点</div>';
     } else if (targetsCache.includes(node.id)) {
-      action = `<div class="tt-row">点击${state.owner === 0 ? '调兵到' : '派兵到'}这里</div>`;
+      action = `<div class="tt-row">点击${state.owner === localSeat ? '调兵到' : '派兵到'}这里</div>`;
     }
   }
 
@@ -968,12 +1093,253 @@ canvas.addEventListener('mouseleave', () => {
 });
 
 // ---------------------------------------------------------------------------
+// 联机房间
+// ---------------------------------------------------------------------------
+
+const ROOM_KEY_STORAGE = 'starflow.room.key';
+const ROOM_NAME_STORAGE = 'starflow.room.name';
+
+function setRoomStatus(text: string, level: 'info' | 'ok' | 'warn' = 'info'): void {
+  roomStatusEl.textContent = text;
+  roomStatusEl.classList.toggle('ok', level === 'ok');
+  roomStatusEl.classList.toggle('warn', level === 'warn');
+}
+
+function normalizeRoomKey(raw: string): string {
+  return raw.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 16);
+}
+
+function randomBytes(count: number): Uint8Array {
+  const bytes = new Uint8Array(count);
+  if (globalThis.crypto?.getRandomValues) {
+    globalThis.crypto.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < count; index += 1) bytes[index] = Math.floor(Math.random() * 256);
+  }
+  return bytes;
+}
+
+function randomRoomKey(): string {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return Array.from(randomBytes(6), (byte) => alphabet[byte % alphabet.length]).join('');
+}
+
+function roomTokenFor(key: string): string {
+  const storageKey = `starflow.room.token.${key}`;
+  let value = sessionStorage.getItem(storageKey);
+  if (!value) {
+    value = Array.from(randomBytes(12), (byte) => byte.toString(16).padStart(2, '0')).join('');
+    sessionStorage.setItem(storageKey, value);
+  }
+  return value;
+}
+
+function leaveRoom(): void {
+  if (!online) return;
+  online.source.close();
+  online = null;
+  localSeat = 0;
+  live = null;
+  plan = null;
+  match = null;
+  targetsCache = [];
+  setPlaying(false);
+  stageEmpty.classList.remove('hidden');
+  banner.hidden = true;
+  scoreEl.innerHTML = '';
+  logEl.innerHTML = '<p class="log-empty">战报已清空，新的事件会继续出现。</p>';
+  logState.upto = 0;
+  logState.empty = true;
+  roomRestartButton.hidden = true;
+  setRoomStatus('已离开房间。');
+  syncCommandUi();
+}
+
+async function joinRoom(): Promise<void> {
+  const key = normalizeRoomKey(roomKeyInput.value);
+  if (key.length < 3) {
+    setRoomStatus('房间密钥需为 3–16 位字母或数字', 'warn');
+    return;
+  }
+  try {
+    const probe = await fetch('/api/health');
+    if (!probe.ok) throw new Error('no backend');
+  } catch {
+    setRoomStatus('当前站点没有联机服务，请部署 server.mjs 版本后再试', 'warn');
+    return;
+  }
+
+  roomKeyInput.value = key;
+  localStorage.setItem(ROOM_KEY_STORAGE, key);
+  const name = roomNameInput.value.trim().slice(0, 16) || '玩家';
+  roomNameInput.value = name;
+  localStorage.setItem(ROOM_NAME_STORAGE, name);
+
+  leaveRoom();
+  const token = roomTokenFor(key);
+  const url = new URL('/api/room/events', window.location.origin);
+  url.searchParams.set('key', key);
+  url.searchParams.set('token', token);
+  url.searchParams.set('name', name);
+
+  const source = new EventSource(url.toString());
+  const session: OnlineSession = {
+    key,
+    token,
+    seat: 0,
+    name,
+    source,
+    result: null,
+    state: null,
+    finished: false,
+    waitingFor: [0, 1],
+  };
+  online = session;
+  localSeat = 0;
+  setRoomStatus(`正在连接房间 ${key}…`);
+
+  source.addEventListener('hello', (event) => {
+    if (online !== session) return;
+    const data = JSON.parse((event as MessageEvent<string>).data) as {
+      seat: number;
+      token: string;
+      name: string;
+      seed: number;
+    };
+    session.seat = data.seat;
+    session.token = data.token;
+    localSeat = data.seat;
+    sessionStorage.setItem(`starflow.room.token.${key}`, data.token);
+    setRoomStatus(
+      `房间 ${key} · 你是${data.seat === 0 ? '蓝方' : '粉方'}（${data.name}）· 种子 ${data.seed}。把密钥发给朋友即可加入。`,
+      'ok',
+    );
+  });
+
+  source.addEventListener('state', (event) => {
+    if (online !== session) return;
+    const data = JSON.parse((event as MessageEvent<string>).data) as {
+      finished: boolean;
+      waitingFor: number[];
+      result: MatchResult | null;
+    };
+    applyRoomState(session, data);
+  });
+
+  source.addEventListener('notice', (event) => {
+    if (online !== session) return;
+    const data = JSON.parse((event as MessageEvent<string>).data) as { message: string; level?: string };
+    setRoomStatus(
+      data.message,
+      data.level === 'ok' ? 'ok' : data.level === 'warn' ? 'warn' : 'info',
+    );
+  });
+
+  source.onerror = () => {
+    if (online === session) setRoomStatus('连接中断，正在自动重连…', 'warn');
+  };
+}
+
+function applyRoomState(
+  session: OnlineSession,
+  data: { finished: boolean; waitingFor: number[]; result: MatchResult | null },
+): void {
+  session.finished = Boolean(data.finished);
+  session.waitingFor = Array.isArray(data.waitingFor) ? data.waitingFor : [];
+  session.result = data.result;
+  session.state = stateFromResult(data.result);
+  match = data.result;
+  plan = session.state ? new HumanPlan(session.state, session.seat) : null;
+  targetsCache = [];
+
+  if (match) {
+    prepareStage();
+    syncHumanFrame(true);
+  }
+  roomRestartButton.hidden = !session.finished;
+
+  if (session.finished) {
+    setRoomStatus('对局结束。任意一方点「再来一局」即可换地图重开。', 'ok');
+  } else {
+    const waitingNames = session.waitingFor.map((seat) => session.result?.names[seat] ?? `玩家 ${seat + 1}`);
+    setRoomStatus(
+      waitingNames.length
+        ? `房间 ${session.key} · 等待 ${waitingNames.join('、')} 下令…`
+        : `房间 ${session.key} · 双方已下令，正在结算…`,
+    );
+  }
+
+  // 被淘汰后自动提交空指令，避免每回合都拖到超时
+  if (!session.finished && session.waitingFor.includes(session.seat) && !meAlive()) {
+    void submitOrders([]);
+  }
+}
+
+async function submitOrders(orders: Order[]): Promise<void> {
+  const session = online;
+  if (!session) return;
+  try {
+    const response = await fetch('/api/room/order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: session.key, token: session.token, orders }),
+    });
+    const data = (await response.json()) as { ok?: boolean; waitingFor?: number[]; error?: string };
+    if (!response.ok || !data.ok) {
+      setRoomStatus(data.error ?? '指令提交失败', 'warn');
+      return;
+    }
+    session.waitingFor = Array.isArray(data.waitingFor) ? data.waitingFor : [];
+    syncCommandUi();
+  } catch {
+    setRoomStatus('指令提交失败，请检查连接', 'warn');
+  }
+}
+
+async function restartRoom(): Promise<void> {
+  const session = online;
+  if (!session || !session.finished) return;
+  try {
+    const response = await fetch('/api/room/restart', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: session.key, token: session.token }),
+    });
+    const data = (await response.json()) as { ok?: boolean; error?: string };
+    if (!response.ok || !data.ok) {
+      setRoomStatus(data.error ?? '重开失败', 'warn');
+      return;
+    }
+    roomRestartButton.hidden = true;
+  } catch {
+    setRoomStatus('重开失败，请检查连接', 'warn');
+  }
+}
+
+roomKeyInput.value = localStorage.getItem(ROOM_KEY_STORAGE) ?? '';
+roomNameInput.value = localStorage.getItem(ROOM_NAME_STORAGE) ?? '';
+el<HTMLButtonElement>('btn-room-random').addEventListener('click', () => {
+  roomKeyInput.value = randomRoomKey();
+  roomKeyInput.focus();
+});
+el<HTMLButtonElement>('btn-room-connect').addEventListener('click', () => void joinRoom());
+el<HTMLButtonElement>('btn-room-leave').addEventListener('click', () => leaveRoom());
+roomRestartButton.addEventListener('click', () => void restartRoom());
+roomKeyInput.addEventListener('keydown', (event) => {
+  if (event.code === 'Enter') {
+    event.preventDefault();
+    void joinRoom();
+  }
+});
+
+// ---------------------------------------------------------------------------
 // 交互绑定
 // ---------------------------------------------------------------------------
 
 for (const button of Array.from(document.querySelectorAll<HTMLButtonElement>('#mode-seg button'))) {
   button.addEventListener('click', () => {
     const mode = button.dataset.mode === 'ffa' ? 'ffa' : 'duel';
+    if (settings.seat === 'online' && mode === 'ffa') return;
     if (settings.mode === mode) return;
     settings.mode = mode;
     syncModeButtons();
@@ -984,13 +1350,17 @@ for (const button of Array.from(document.querySelectorAll<HTMLButtonElement>('#m
 
 for (const button of Array.from(document.querySelectorAll<HTMLButtonElement>('#seat-seg button'))) {
   button.addEventListener('click', () => {
-    const seat: Seat = button.dataset.seat === 'human' ? 'human' : 'watch';
+    const raw = button.dataset.seat;
+    const seat: Seat = raw === 'human' ? 'human' : raw === 'online' ? 'online' : 'watch';
     if (settings.seat === seat) return;
+    if (settings.seat === 'online') leaveRoom();
     settings.seat = seat;
+    if (seat === 'online') settings.mode = 'duel';
+    syncModeButtons();
     syncSeatUi();
     renderSlots();
     saveSettings();
-    startMatch();
+    if (seat !== 'online') startMatch();
   });
 }
 
@@ -1016,6 +1386,10 @@ fogInput.addEventListener('change', () => {
 
 el<HTMLButtonElement>('btn-start').addEventListener('click', () => startMatch());
 el<HTMLButtonElement>('btn-again').addEventListener('click', () => {
+  if (online) {
+    void restartRoom();
+    return;
+  }
   settings.seed = Math.floor(Math.random() * 1_000_000_000);
   seedInput.value = String(settings.seed);
   saveSettings();
